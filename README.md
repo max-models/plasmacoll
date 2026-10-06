@@ -125,8 +125,9 @@ make docs-build       # the static site in docs/dist
 
 ## Releases
 
-Before merging a release to `main`, update the version in `pyproject.toml` and
-`src/plasmacoll/__init__.py`, and add the release notes to `CHANGELOG.md`. The
-push to `main` creates a GitHub release with a `vX.Y.Z` tag and publishes the
-package to PyPI with trusted publishing (OIDC). See the [publishing
+Before merging a release to `main`, update the version in
+`pyproject.toml` and `src/plasmacoll/__init__.py`, and add the release
+notes to `CHANGELOG.md`. The push to `main` creates a GitHub release
+with a `vX.Y.Z` tag and publishes the package to PyPI with trusted
+publishing (OIDC). See the [publishing
 guide](https://max-models.github.io/plasmacoll/development/publishing/).
