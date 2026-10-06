@@ -80,6 +80,9 @@ typeCheckingMode = "standard"
 pythonpath = [ "src" ]
 testpaths = [ "src" ]
 addopts = "-ra"
+# the kinematics tests make every marker collide in one step on purpose; the warning
+# itself is tested explicitly in test_mcc_extensions.py
+filterwarnings = [ "ignore:.*collision probability per step:RuntimeWarning" ]
 
 [tool.coverage.run]
 source = [ "plasmacoll" ]

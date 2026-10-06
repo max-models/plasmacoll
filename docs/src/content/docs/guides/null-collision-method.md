@@ -49,10 +49,26 @@ warns once.
 
 ## Density profiles and thinning
 
-A background with a `DensityProfile` has density $n_b\,f(\mathbf x)$. The bound uses the largest
+A background with a profile has density $n_b\,f(\mathbf x)$. The bound uses the largest
 factor $\max f$, and each candidate's real frequency uses the factor at its position. Markers
 where the gas is thin are therefore mostly null collisions. This is thinning of a Poisson process,
 and it is exact.
+
+A profile is a `DensityProfile` (piecewise linear along one axis) or a
+`FunctionProfile(function, max_factor)` of all position components; any object with a
+`max_factor` and a call on the positions works. A `FunctionProfile` must not exceed its
+`max_factor`; where it does, the candidates are counted as bound violations.
+
+## Flowing and heated gas
+
+`NeutralBackground(..., drift=(ux, uy, uz))` is a gas flowing with that mean velocity, and
+`temperature_profile=` scales its temperature in space like a density profile. Neutral partners
+are drawn from the local drifting Maxwellian, and the bound covers relative speeds up to the
+marker speed plus the flow speed plus eight of the largest thermal speeds.
+
+A background is fixed during a step. To follow gas heating or depletion, build the new
+background between steps and pass it to `MonteCarloCollisions.set_background`, which
+retabulates the bound.
 
 ## Choosing the time step
 
@@ -62,6 +78,10 @@ ionizes at constant $\nu$ grows by $(1 + P)$ per step instead of $e^{\nu\Delta t
 [tutorial 3](/plasmacoll/tutorials/03-ionization-attachment/) measures. Keep
 $\nu_{\max}\Delta t \lesssim 0.1$ (a few percent error on the rate), or collide every $m$ steps
 with $m\Delta t$ only if $\nu_{\max} m\Delta t$ stays that small.
+
+The operator checks this: `MCCDiagnostics.collision_probability` reports
+$1 - e^{-\nu_{\max}\Delta t}$ of every call, and the operator warns once when it exceeds
+`max_collision_probability` (default 0.1).
 
 ## Random numbers
 

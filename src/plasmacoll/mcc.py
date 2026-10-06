@@ -6,40 +6,54 @@ species collides with probability ``1 - exp(-nu_max dt)``, where ``nu_max``
 bounds the species' total collision frequency. A second random number then
 selects a real process ``k`` with probability ``nu_k / nu_max`` or a null
 collision. A marker therefore collides at most once per step, which requires
-``nu_max dt << 1``.
+``nu_max dt << 1``; the operator warns when the collision probability
+``1 - exp(-nu_max dt)`` exceeds ``max_collision_probability``.
 
 All kinematics are evaluated in the centre-of-mass frame of the marker and a
-neutral partner whose velocity is sampled from the background Maxwellian:
+neutral partner whose velocity is sampled from the background Maxwellian.
+"Scattered" means isotropically, or with the angular distribution of the
+process's ``scattering`` model about the incident direction:
 
 ``elastic``
-    Isotropic scattering of the relative velocity.
+    Scattering of the relative velocity.
 ``backscatter``
     Relative velocity reversed (charge exchange for symmetric ion-atom pairs:
-    the ion leaves with the neutral's velocity).
-``excitation``
-    Isotropic scattering with the relative kinetic energy reduced by the
-    threshold.
-``ionization``
+    the ion leaves with the neutral's velocity, and an optional ``neutral``
+    product with the ion's velocity).
+``excitation``, ``dissociation``
+    Scattering with the relative kinetic energy reduced by the threshold.
+    Dissociation can create a ``fragment`` neutral with the neutral's velocity.
+``ionization``, ``dissociative_ionization``
     ``e + A -> 2e + A+``. The residual energy ``E - E_iz`` is shared between
-    the primary and the secondary electron (equally by default, or with a
-    uniformly distributed fraction), both scattered isotropically in the
-    neutral's frame. The new ion starts with the neutral's velocity.
-``attachment``
-    ``e + A -> A-``. The electron is removed and a negative ion is created
-    with the neutral's velocity.
+    the primary and the secondary electron (equally, with a uniformly
+    distributed fraction, or from the Opal-Peterson-Beaty distribution), both
+    scattered in the neutral's frame. The new ion (and fragment) starts with
+    the neutral's velocity. If the incident species is not the product
+    electron (ion impact, ``A+ + B -> A+ + B+ + e``), the secondary electron
+    takes its share of the centre-of-mass energy and is emitted isotropically,
+    and the incident ion keeps its direction with the remaining energy.
+``attachment``, ``dissociative_attachment``
+    ``e + A -> A-``. The electron is removed and a negative ion (and fragment)
+    is created with the neutral's velocity.
 ``charge_transfer``
     ``A+ + B -> A + B+``. The incident ion becomes a fast neutral and is
-    removed (neutrals are not tracked). If an ``ion`` product species is
-    given, the new ion ``B+`` is created with the neutral's velocity. Use
-    ``backscatter`` instead for resonant charge exchange, where ion and
-    neutral are the same species.
+    removed, or moved to the optional ``neutral`` product species. If an
+    ``ion`` product species is given, the new ion ``B+`` is created with the
+    neutral's velocity. Use ``backscatter`` instead for resonant charge
+    exchange, where ion and neutral are the same species.
 ``detachment``
     ``A- + B -> A + B + e``. The negative ion is removed and an electron is
     emitted isotropically in the centre-of-mass frame carrying the residual
     energy ``E - E_th``. The neutral fragments are not tracked.
 
-Products take the position and weight of the incident marker, so species that
-exchange particles must share the same macroparticle weight to conserve charge.
+Products take the position and weight of the incident marker, which conserves
+charge and particle number marker by marker, so markers may have any weights.
+A code with one fixed weight per species must give species that exchange
+particles the same weight; :mod:`plasmacoll.population` splits and merges
+markers to control their number.
+
+Collisions between charged particles (Coulomb collisions, recombination) are
+outside the scope of this operator: the targets are always neutral gases.
 """
 
 from __future__ import annotations
@@ -64,7 +78,11 @@ __all__ = [
     "MonteCarloCollisions",
     "NewMarkers",
     "make_rng",
+    "scattering_cosine",
 ]
+
+#: Hartree energy in eV, the energy unit of the Okhrimovskyy scattering formula.
+_HARTREE_EV = 27.211386
 
 
 class NewMarkers(NamedTuple):
@@ -85,12 +103,16 @@ class MCCDiagnostics:
         counts: Real collisions per process name.
         bound_violations: Candidates whose real frequency exceeded ``nu_max``,
             which should be zero; otherwise the collision rate is too low.
+        collision_probability: ``1 - exp(-nu_max dt)``, the probability of a
+            (real or null) collision per marker and step; it must be small,
+            as a marker collides at most once per step.
     """
 
     candidates: int = 0
     null_collisions: int = 0
     counts: dict[str, int] = field(default_factory=dict)
     bound_violations: int = 0
+    collision_probability: float = 0.0
 
     @property
     def real_collisions(self) -> int:
@@ -105,7 +127,7 @@ class MCCResult:
     Attributes:
         velocities: The velocities after the step (the input array if in place).
         removed: Markers consumed by a collision (attachment, detachment,
-            charge transfer).
+            charge transfer and their dissociative variants).
         created: New markers per product species, one batch per process.
         diagnostics: The collision counters.
     """
@@ -147,6 +169,67 @@ def _isotropic_directions(rng: Any, num: int) -> Array:
     )
 
 
+def scattering_cosine(model: str, energy: Array, uniform: Array) -> Array:
+    """Return the cosine of the scattering angle for incident ``energy`` (eV).
+
+    ``uniform`` holds random numbers in [0, 1), one per collision, which the
+    model's inverse cumulative distribution maps to ``cos(chi)``:
+
+    ``isotropic``
+        ``1 - 2 R``.
+    ``vahedi_surendra``
+        ``(2 + E - 2 (1 + E)^R) / E`` with ``E`` in eV (Vahedi and Surendra
+        1995), isotropic as ``E -> 0`` and forward-peaked for ``E >> 1 eV``.
+    ``okhrimovskyy``
+        ``1 - 2 R (1 - xi) / (1 + xi (1 - 2 R))`` with ``xi = 4 e / (1 + 4 e)``
+        and ``e`` the energy in Hartree (Okhrimovskyy et al. 2002).
+
+    Raises:
+        ValueError: For an unknown model.
+    """
+    energy = xp.clip(xp.asarray(energy, dtype=float), 0.0, None)
+    if model == "isotropic":
+        return 1.0 - 2.0 * uniform
+    if model == "vahedi_surendra":
+        small = energy < 1.0e-6
+        safe = xp.where(small, 1.0, energy)
+        cosine = (2.0 + safe - 2.0 * (1.0 + safe) ** uniform) / safe
+        return xp.clip(xp.where(small, 1.0 - 2.0 * uniform, cosine), -1.0, 1.0)
+    if model == "okhrimovskyy":
+        scaled = 4.0 * energy / _HARTREE_EV
+        xi = scaled / (1.0 + scaled)
+        cosine = 1.0 - 2.0 * uniform * (1.0 - xi) / (1.0 + xi * (1.0 - 2.0 * uniform))
+        return xp.clip(cosine, -1.0, 1.0)
+    raise ValueError(f"Unknown scattering model {model!r}")
+
+
+def _rotate(directions: Array, cos_chi: Array, phi: Array) -> Array:
+    """Rotate unit vectors by polar angle ``chi`` and azimuth ``phi`` about themselves."""
+    # A unit vector perpendicular to each direction: the cross product with the
+    # coordinate axis the direction is least aligned with.
+    use_y = xp.abs(directions[:, 0]) > 0.9
+    axis = xp.zeros_like(directions)
+    axis[:, 0] = xp.where(use_y, 0.0, 1.0)
+    axis[:, 1] = xp.where(use_y, 1.0, 0.0)
+    first = xp.cross(axis, directions)
+    first = first / xp.linalg.norm(first, axis=1)[:, None]
+    second = xp.cross(directions, first)
+    sin_chi = xp.sqrt(xp.clip(1.0 - cos_chi**2, 0.0, None))
+    return (
+        cos_chi[:, None] * directions
+        + (sin_chi * xp.cos(phi))[:, None] * first
+        + (sin_chi * xp.sin(phi))[:, None] * second
+    )
+
+
+def _unit(vectors: Array, norms: Array) -> Array:
+    """Return ``vectors / norms``, or the z axis where the norm is zero."""
+    zero = norms <= 0.0
+    units = vectors / xp.where(zero, 1.0, norms)[:, None]
+    units[:, 2] = xp.where(zero, 1.0, units[:, 2])
+    return units
+
+
 class MonteCarloCollisions:
     """Null-collision Monte Carlo collision operator for several species.
 
@@ -164,6 +247,9 @@ class MonteCarloCollisions:
         bound_safety: Factor (>= 1) raising ``nu_max`` to cover frequency
             maxima that fall between the speeds of the bound grid; 1.0 is
             exact for piecewise constant cross sections.
+        max_collision_probability: Warn (once) when the collision probability
+            per step ``1 - exp(-nu_max dt)`` exceeds this, because markers that
+            would collide more than once per step then lose collisions.
 
     Raises:
         KeyError: If a species, background or product has no definition.
@@ -179,11 +265,14 @@ class MonteCarloCollisions:
         rng: Any = None,
         num_bound_samples: int = 4096,
         bound_safety: float = 1.02,
+        max_collision_probability: float = 0.1,
     ) -> None:
         """Check the definitions and tabulate the collision-frequency bounds."""
         self._masses = {name: float(mass) for name, mass in species_masses.items()}
         self._backgrounds = {bg.name: bg for bg in backgrounds}
         self._processes = {name: tuple(procs) for name, procs in processes.items()}
+        if len(self._backgrounds) != len(backgrounds):
+            raise ValueError("background names must be unique")
         for name, mass in self._masses.items():
             if mass <= 0.0:
                 raise ValueError(f"Mass of species {name!r} must be > 0")
@@ -204,14 +293,36 @@ class MonteCarloCollisions:
                         raise KeyError(f"No mass given for product {product!r}")
         if bound_safety < 1.0:
             raise ValueError("bound_safety must be >= 1")
+        if not 0.0 < max_collision_probability <= 1.0:
+            raise ValueError("max_collision_probability must be in (0, 1]")
         self._rng = make_rng(seed, rank) if rng is None else rng
         self._num_bound_samples = int(num_bound_samples)
         self._bound_safety = float(bound_safety)
+        self._max_probability = float(max_collision_probability)
+        self._tabulate_bounds()
+        self._warned_bound = False
+        self._warned_probability = False
+
+    def _tabulate_bounds(self) -> None:
+        """Tabulate the collision-frequency bound of every species."""
         self._frequency_tables = {
             species: self._running_frequency_bound(species)
             for species in self._processes
         }
-        self._warned_bound = False
+
+    def set_background(self, background: NeutralBackground) -> None:
+        """Replace the background of the same name, e.g. after gas heating or depletion.
+
+        The frequency bounds are tabulated again, so call this between steps
+        rather than every step when the density changes little.
+
+        Raises:
+            KeyError: If no background has the name of ``background``.
+        """
+        if background.name not in self._backgrounds:
+            raise KeyError(f"No background {background.name!r} to replace")
+        self._backgrounds[background.name] = background
+        self._tabulate_bounds()
 
     # ------------------------------------------------------------------ #
     # Collision frequencies
@@ -347,6 +458,8 @@ class MonteCarloCollisions:
             total_mass
         )
         loss = process.loss * ELEMENTARY_CHARGE
+        incident_direction = _unit(relative, speed)
+        kind = process.kind
 
         def add_product(role: str, product_velocities: Array) -> None:
             created.setdefault(process.products[role], []).append(
@@ -357,41 +470,70 @@ class MonteCarloCollisions:
                 )
             )
 
-        if process.kind in ("elastic", "excitation"):
+        def add_optional(role: str, product_velocities: Array) -> None:
+            if role in process.products:
+                add_product(role, xp.array(product_velocities, copy=True))
+
+        def directions(energy_ev: Array) -> Array:
+            """Scatter about the incident direction with the process's model."""
+            if process.scattering == "isotropic":
+                return _isotropic_directions(self._rng, num)
+            cos_chi = scattering_cosine(
+                process.scattering, energy_ev, self._rng.random(num)
+            )
+            phi = 2.0 * xp.pi * self._rng.random(num)
+            return _rotate(incident_direction, cos_chi, phi)
+
+        if kind in ("elastic", "excitation", "dissociation"):
+            lookup_energy = (
+                0.5 * self._energy_mass(species, process) * speed**2 / ELEMENTARY_CHARGE
+            )
             speed_squared = speed**2 - 2.0 * loss / reduced_mass
             new_speed = xp.sqrt(xp.clip(speed_squared, 0.0, None))
             velocities[marker_indices] = center_of_mass + (
                 neutral_mass / total_mass
-            ) * new_speed[:, None] * _isotropic_directions(self._rng, num)
-        elif process.kind == "backscatter":
+            ) * new_speed[:, None] * directions(lookup_energy)
+            add_optional("fragment", neutral_velocities)
+        elif kind == "backscatter":
             velocities[marker_indices] = (
                 center_of_mass - (neutral_mass / total_mass) * relative
             )
-        elif process.kind == "ionization":
-            energy = 0.5 * mass * speed**2
-            residual = xp.clip(energy - loss, 0.0, None)
-            if process.energy_sharing == "equal":
-                fraction = xp.full(num, 0.5)
-            else:
-                fraction = self._rng.random(num)
-            primary_speed = xp.sqrt(2.0 * (1.0 - fraction) * residual / mass)
-            secondary_speed = xp.sqrt(2.0 * fraction * residual / mass)
-            velocities[marker_indices] = neutral_velocities + primary_speed[
-                :, None
-            ] * _isotropic_directions(self._rng, num)
-            add_product(
-                "electron",
-                neutral_velocities
-                + secondary_speed[:, None] * _isotropic_directions(self._rng, num),
-            )
-            add_product("ion", xp.array(neutral_velocities, copy=True))
-        elif process.kind == "charge_transfer":
-            removed[marker_indices] = True
-            if "ion" in process.products:
+            add_optional("neutral", velocity)
+        elif process.is_ionization:
+            electron_species = process.products["electron"]
+            if electron_species == species:
+                self._electron_impact_ionization(
+                    process,
+                    marker_indices,
+                    velocities,
+                    neutral_velocities,
+                    speed,
+                    directions,
+                    add_product,
+                )
                 add_product("ion", xp.array(neutral_velocities, copy=True))
-        elif process.kind == "attachment":
+            else:
+                self._ion_impact_ionization(
+                    process,
+                    marker_indices,
+                    velocities,
+                    neutral_velocities,
+                    center_of_mass,
+                    incident_direction,
+                    speed,
+                    mass,
+                    neutral_mass,
+                    add_product,
+                )
+            add_optional("fragment", neutral_velocities)
+        elif kind == "charge_transfer":
+            removed[marker_indices] = True
+            add_optional("ion", neutral_velocities)
+            add_optional("neutral", velocity)
+        elif kind in ("attachment", "dissociative_attachment"):
             removed[marker_indices] = True
             add_product("negative_ion", xp.array(neutral_velocities, copy=True))
+            add_optional("fragment", neutral_velocities)
         else:  # detachment
             removed[marker_indices] = True
             electron_mass = self._masses[process.products["electron"]]
@@ -402,6 +544,94 @@ class MonteCarloCollisions:
                 center_of_mass
                 + electron_speed[:, None] * _isotropic_directions(self._rng, num),
             )
+
+    def _secondary_fraction(self, process: CollisionProcess, residual: Array) -> Array:
+        """Return the fraction of the residual energy (J) the secondary electron gets."""
+        num = int(residual.shape[0])
+        if process.energy_sharing == "equal":
+            return xp.full(num, 0.5)
+        if process.energy_sharing == "uniform":
+            return self._rng.random(num)
+        # Opal-Peterson-Beaty: the secondary energy E_s in [0, residual / 2] has
+        # the density 1 / (1 + (E_s / w)^2), sampled by inverting its integral.
+        width = float(process.sharing_energy or 0.0) * ELEMENTARY_CHARGE
+        secondary = width * xp.tan(
+            self._rng.random(num) * xp.arctan(residual / (2.0 * width))
+        )
+        return xp.where(
+            residual > 0.0, secondary / xp.where(residual > 0.0, residual, 1.0), 0.0
+        )
+
+    def _electron_impact_ionization(
+        self,
+        process: CollisionProcess,
+        marker_indices: Array,
+        velocities: Array,
+        neutral_velocities: Array,
+        speed: Array,
+        directions: Any,
+        add_product: Any,
+    ) -> None:
+        """``e + A -> 2e + A+``: share ``E - E_iz`` between the two electrons."""
+        mass = self._masses[process.products["electron"]]
+        energy = 0.5 * mass * speed**2
+        residual = xp.clip(energy - process.loss * ELEMENTARY_CHARGE, 0.0, None)
+        fraction = self._secondary_fraction(process, residual)
+        primary_energy = (1.0 - fraction) * residual
+        secondary_energy = fraction * residual
+        primary_speed = xp.sqrt(2.0 * primary_energy / mass)
+        secondary_speed = xp.sqrt(2.0 * secondary_energy / mass)
+        velocities[marker_indices] = neutral_velocities + primary_speed[
+            :, None
+        ] * directions(primary_energy / ELEMENTARY_CHARGE)
+        add_product(
+            "electron",
+            neutral_velocities
+            + secondary_speed[:, None]
+            * directions(secondary_energy / ELEMENTARY_CHARGE),
+        )
+
+    def _ion_impact_ionization(
+        self,
+        process: CollisionProcess,
+        marker_indices: Array,
+        velocities: Array,
+        neutral_velocities: Array,
+        center_of_mass: Array,
+        incident_direction: Array,
+        speed: Array,
+        mass: float,
+        neutral_mass: float,
+        add_product: Any,
+    ) -> None:
+        """``A+ + B -> A+ + B+ + e``: the electron takes its share of ``E_cm - E_iz``.
+
+        The incident and the target ion separate along the incident direction
+        in the centre-of-mass frame with the remaining energy, and the electron
+        is emitted isotropically from the centre of mass. Energy and momentum
+        are conserved up to the electron's momentum, O(sqrt(m_e / M)).
+        """
+        num = int(marker_indices.shape[0])
+        electron_mass = self._masses[process.products["electron"]]
+        total_mass = mass + neutral_mass
+        reduced_mass = mass * neutral_mass / total_mass
+        energy = 0.5 * reduced_mass * speed**2
+        residual = xp.clip(energy - process.loss * ELEMENTARY_CHARGE, 0.0, None)
+        secondary_energy = self._secondary_fraction(process, residual) * residual
+        new_relative = (
+            xp.sqrt(2.0 * (residual - secondary_energy) / reduced_mass)[:, None]
+            * incident_direction
+        )
+        velocities[marker_indices] = (
+            center_of_mass + (neutral_mass / total_mass) * new_relative
+        )
+        add_product("ion", center_of_mass - (mass / total_mass) * new_relative)
+        secondary_speed = xp.sqrt(2.0 * secondary_energy / electron_mass)
+        add_product(
+            "electron",
+            center_of_mass
+            + secondary_speed[:, None] * _isotropic_directions(self._rng, num),
+        )
 
     # ------------------------------------------------------------------ #
     # Collision step
@@ -481,14 +711,27 @@ class MonteCarloCollisions:
 
         # Dead rows only raise the bound, which keeps it valid.
         max_speed = float(np.sqrt(_max_squared_speed(velocities)))
-        max_thermal = max(
-            self._backgrounds[p.background].thermal_speed for p in processes
+        # The fastest neutral partner: flow plus eight thermal speeds.
+        max_neutral_speed = max(
+            self._backgrounds[p.background].drift_speed
+            + 8.0 * self._backgrounds[p.background].max_thermal_speed
+            for p in processes
         )
-        nu_max = self.frequency_bound(species, max_speed + 8.0 * max_thermal)
+        nu_max = self.frequency_bound(species, max_speed + max_neutral_speed)
         if nu_max <= 0.0:
             return MCCResult(velocities, removed, created, diagnostics)
 
         probability = 1.0 - float(np.exp(-nu_max * dt))
+        diagnostics.collision_probability = probability
+        if probability > self._max_probability and not self._warned_probability:
+            warnings.warn(
+                f"{species} collision probability per step {probability:.3g} exceeds "
+                f"{self._max_probability:.3g} (nu_max dt = {nu_max * dt:.3g}); markers "
+                "collide at most once per step, so collisions are lost. Reduce dt.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            self._warned_probability = True
         candidates = self._select_candidates(num_markers, probability, alive)
         num_candidates = int(candidates.shape[0])
         diagnostics.candidates = num_candidates
@@ -506,9 +749,12 @@ class MonteCarloCollisions:
             dict.fromkeys(process.background for process in processes)
         )
         background_index = {name: index for index, name in enumerate(backgrounds_used)}
+        candidate_positions = positions[candidates]
         neutral_stack = xp.stack(
             [
-                self._backgrounds[name].sample_velocities(self._rng, num_candidates)
+                self._backgrounds[name].sample_velocities(
+                    self._rng, num_candidates, candidate_positions
+                )
                 for name in backgrounds_used
             ],
         )
@@ -518,7 +764,7 @@ class MonteCarloCollisions:
         # Thinning: the bound uses each background's largest density, and a
         # marker's real frequency the density where it is.
         density_factors = [
-            self._backgrounds[name].density_factor(positions[candidates])
+            self._backgrounds[name].density_factor(candidate_positions)
             for name in backgrounds_used
         ]
         relative_stack = incident[None, :, :] - neutral_stack[process_background]

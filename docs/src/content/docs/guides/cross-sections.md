@@ -32,6 +32,28 @@ its full `PROCESS` comment. For excitation and ionization blocks the threshold i
 parameter line; for elastic blocks the parameter is the mass ratio $m_e/M$
 (`LXCatProcess.mass_ratio`).
 
+## Effective cross sections
+
+Many LXCat sets give an `EFFECTIVE` cross section instead of an `ELASTIC` one: the elastic
+momentum-transfer cross section **plus every inelastic cross section** of the set. Used directly
+as an `elastic` process next to the inelastic processes, it counts their momentum transfer twice.
+Subtract them first:
+
+```python
+processes = plasmacoll.read_lxcat("Ar.txt")
+elastic = plasmacoll.elastic_from_lxcat(processes, target="Ar")
+```
+
+`elastic_from_lxcat` returns the `ELASTIC` block if the set has one, and otherwise
+`CrossSection.elastic_from_effective(effective, inelastic)` of the `EFFECTIVE` block and the
+set's excitation, ionization and attachment blocks. The result is tabulated on the energies of
+all tables with points on both sides of every threshold, and clipped at zero with a warning
+where the set is inconsistent.
+
+The momentum-transfer cross section belongs with isotropic scattering. With an anisotropic
+[scattering model](/plasmacoll/guides/collision-processes/#scattering-models), use the integral elastic
+cross section instead.
+
 ## Data
 
 plasmacoll does not ship cross-section data. Download sets from [LXCat](https://lxcat.net) and cite
