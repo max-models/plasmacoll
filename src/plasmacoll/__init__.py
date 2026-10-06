@@ -3,9 +3,10 @@
 plasmacoll collides markers (positions, velocities and weights in NumPy or CuPy
 arrays, through :mod:`cunumpy`) with prescribed Maxwellian neutral backgrounds:
 elastic and backscatter collisions, excitation, ionization, attachment,
-detachment and charge transfer, with cross sections from tables, LXCat files
-or functions. It is the collision step of a particle-in-cell code, or with
-:class:`ZeroDReactor` a homogeneous reactor for testing cross-section sets.
+detachment, charge transfer and dissociation, with cross sections from tables,
+LXCat files or functions. It is the collision step of a particle-in-cell code,
+or with :class:`ZeroDReactor` a homogeneous reactor (optionally in an electric
+field) for testing cross-section sets.
 
 Example:
     >>> import plasmacoll
@@ -19,10 +20,16 @@ Example:
     ... )
 """
 
-from plasmacoll.background import DensityProfile, NeutralBackground
+from plasmacoll.background import (
+    DensityProfile,
+    FunctionProfile,
+    NeutralBackground,
+    Profile,
+)
 from plasmacoll.cross_sections import (
     CrossSection,
     LXCatProcess,
+    elastic_from_lxcat,
     find_lxcat_process,
     read_lxcat,
 )
@@ -34,7 +41,9 @@ from plasmacoll.mcc import (
     MonteCarloCollisions,
     NewMarkers,
     make_rng,
+    scattering_cosine,
 )
+from plasmacoll.population import merge_markers, split_markers
 from plasmacoll.process import CollisionProcess
 from plasmacoll.reactor import ReactorHistory, ReactorState, ZeroDReactor
 from plasmacoll.vibrational import (
@@ -49,6 +58,7 @@ __all__ = [
     "CollisionProcess",
     "CrossSection",
     "DensityProfile",
+    "FunctionProfile",
     "LXCatProcess",
     "MCCDiagnostics",
     "MCCResult",
@@ -57,14 +67,19 @@ __all__ = [
     "NeutralBackground",
     "NewMarkers",
     "ParticleArrays",
+    "Profile",
     "ReactorHistory",
     "ReactorState",
     "VibrationalDistribution",
     "ZeroDReactor",
     "boltzmann_level_populations",
+    "elastic_from_lxcat",
     "estimate_electronegativity",
     "find_lxcat_process",
     "make_rng",
+    "merge_markers",
     "proton_hydrogen_processes",
     "read_lxcat",
+    "scattering_cosine",
+    "split_markers",
 ]

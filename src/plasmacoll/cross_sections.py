@@ -10,6 +10,7 @@ two-column text file (:meth:`CrossSection.from_table`), from an LXCat file
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,6 +25,7 @@ __all__ = [
     "LXCAT_PROCESS_KINDS",
     "CrossSection",
     "LXCatProcess",
+    "elastic_from_lxcat",
     "find_lxcat_process",
     "read_lxcat",
 ]
@@ -285,6 +287,61 @@ class CrossSection:
             label=label or Path(path).stem,
         )
 
+    @classmethod
+    def elastic_from_effective(
+        cls,
+        effective: CrossSection,
+        inelastic: Sequence[CrossSection],
+        label: str = "",
+    ) -> CrossSection:
+        """Return the elastic momentum-transfer cross section ``sigma_eff - sum sigma_inel``.
+
+        An LXCat ``EFFECTIVE`` cross section is the elastic momentum-transfer
+        cross section plus every inelastic cross section of the set. Used as an
+        ``elastic`` process next to the inelastic ones it would count their
+        collisions twice, so subtract them first. The result is tabulated on
+        the energies of all the tables, with points on either side of every
+        threshold, and clipped at zero; a warning is issued if the inelastic
+        sum exceeds the effective cross section by more than 1 %, which means
+        the set is inconsistent.
+
+        Args:
+            effective: The effective (total momentum-transfer) cross section.
+            inelastic: The excitation, ionization and attachment cross sections
+                of the same set.
+            label: A name for plots and messages.
+        """
+        threshold_points = [
+            point
+            for table in inelastic
+            if table.threshold > 0.0
+            for point in (table.threshold * (1.0 - 1.0e-9), table.threshold)
+        ]
+        energy = xp.unique(
+            xp.concatenate(
+                [effective.energy]
+                + [table.energy for table in inelastic]
+                + ([xp.asarray(threshold_points)] if threshold_points else [])
+            )
+        )
+        reference = effective(energy)
+        sigma = reference
+        for table in inelastic:
+            sigma = sigma - table(energy)
+        if bool(xp.any(sigma < -0.01 * reference)):
+            warnings.warn(
+                "The inelastic cross sections exceed the effective cross section; "
+                "the elastic cross section is clipped at zero there.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        return cls(
+            energy=energy,
+            sigma=xp.clip(sigma, 0.0, None),
+            threshold=effective.threshold,
+            label=label or f"elastic from {effective.label or 'effective'}",
+        )
+
     def with_threshold(self, threshold: float) -> CrossSection:
         """Return a copy of this table with another threshold (eV)."""
         return CrossSection(
@@ -429,3 +486,38 @@ def find_lxcat_process(
         if wanted in (process.kind, process.comments.get("PROCESS", "")):
             return process
     raise KeyError(f"No LXCat process {wanted!r}")
+
+
+def elastic_from_lxcat(
+    processes: Sequence[LXCatProcess],
+    target: str | None = None,
+) -> CrossSection:
+    """Return the elastic momentum-transfer cross section of an LXCat set.
+
+    If the set has an ``ELASTIC`` block it is returned as is. Otherwise the
+    ``EXCITATION``, ``IONIZATION`` and ``ATTACHMENT`` cross sections are
+    subtracted from the ``EFFECTIVE`` one with
+    :meth:`CrossSection.elastic_from_effective`.
+
+    Args:
+        processes: Processes from :func:`read_lxcat`.
+        target: Use only the blocks of this target (e.g. ``"Ar"``); all if None.
+
+    Raises:
+        KeyError: If the set has neither an ``ELASTIC`` nor an ``EFFECTIVE`` block.
+    """
+    selected = [
+        process for process in processes if target is None or process.target == target
+    ]
+    for process in selected:
+        if process.kind == "ELASTIC":
+            return process.cross_section
+    for process in selected:
+        if process.kind == "EFFECTIVE":
+            inelastic = [
+                other.cross_section
+                for other in selected
+                if other.kind in ("EXCITATION", "IONIZATION", "ATTACHMENT")
+            ]
+            return CrossSection.elastic_from_effective(process.cross_section, inelastic)
+    raise KeyError(f"No ELASTIC or EFFECTIVE LXCat process for target {target!r}")

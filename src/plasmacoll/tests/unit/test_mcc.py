@@ -403,8 +403,8 @@ def test_batched_processes_attribute_the_correct_background(monkeypatch) -> None
     """
     calls: list[str] = []
 
-    def fake_sample_velocities(self, rng, num):
-        del rng
+    def fake_sample_velocities(self, rng, num, positions=None):
+        del rng, positions
         calls.append(self.name)
         return xp.full((num, 3), 100.0 if self.name == "A" else -100.0)
 

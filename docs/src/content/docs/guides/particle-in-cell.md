@@ -59,6 +59,17 @@ scattering is three-dimensional.
 For a single array set, `collide(species, positions, velocities, weights, dt, alive=None,
 in_place=False)` returns an `MCCResult` and leaves the bookkeeping to the caller.
 
+## Marker weights
+
+Products inherit the weight of the incident marker, so charge is conserved marker by marker
+whatever the weights. If your code uses one weight per species, give species that exchange
+particles the same weight. Otherwise ionization grows and attachment drains the marker count;
+call `plasmacoll.merge_markers(markers, target, cell_size=dx)` every few steps on species that
+grew too large. It merges markers within one grid cell and velocity octant while conserving
+weight, momentum and kinetic energy, and works on any `MarkerSet` through `remove` and `add`.
+The grouping runs on the host, so on GPUs merge rarely rather than every step.
+`split_markers(markers, max_weight)` divides markers that have become too heavy.
+
 ## MPI
 
 The operator holds no global state. With particle decomposition every rank builds the same

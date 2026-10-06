@@ -78,5 +78,10 @@ history = reactor.run(dt=1e-11, num_steps=1000, every=10)
 history.density["Ar+"]  # m^-3, one value per recorded step
 ```
 
+With `electric_field=(Ex, Ey, Ez)` (V/m) and `charges={"e": -1, "Ar+": 1}` the reactor is a swarm
+experiment: every step accelerates the charged species before colliding them, and
+`history.mean_velocity` holds the drift velocities. `max_markers=N` merges a species back to
+$N/2$ markers whenever ionization grows it beyond $N$.
+
 Next: [the null-collision method](/plasmacoll/guides/null-collision-method/), or the
 [tutorials](/plasmacoll/tutorials/).

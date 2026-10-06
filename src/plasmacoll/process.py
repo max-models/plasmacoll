@@ -13,6 +13,7 @@ __all__ = [
     "OPTIONAL_PRODUCT_ROLES",
     "PROCESS_KINDS",
     "PRODUCT_ROLES",
+    "SCATTERING_MODELS",
     "CollisionProcess",
 ]
 
@@ -25,6 +26,9 @@ PROCESS_KINDS = (
     "attachment",
     "detachment",
     "charge_transfer",
+    "dissociation",
+    "dissociative_attachment",
+    "dissociative_ionization",
 )
 #: The product species each kind needs, by role.
 PRODUCT_ROLES: dict[str, tuple[str, ...]] = {
@@ -35,15 +39,35 @@ PRODUCT_ROLES: dict[str, tuple[str, ...]] = {
     "attachment": ("negative_ion",),
     "detachment": ("electron",),
     "charge_transfer": (),
+    "dissociation": (),
+    "dissociative_attachment": ("negative_ion",),
+    "dissociative_ionization": ("electron", "ion"),
 }
-#: The product species a kind may have.
-OPTIONAL_PRODUCT_ROLES: dict[str, tuple[str, ...]] = {"charge_transfer": ("ion",)}
+#: The product species a kind may have. ``neutral`` is the fast neutral of a
+#: charge exchange and ``fragment`` the neutral fragment of a dissociation; both
+#: are dropped (not tracked) unless a species is given for them.
+OPTIONAL_PRODUCT_ROLES: dict[str, tuple[str, ...]] = {
+    "backscatter": ("neutral",),
+    "charge_transfer": ("ion", "neutral"),
+    "dissociation": ("fragment",),
+    "dissociative_attachment": ("fragment",),
+    "dissociative_ionization": ("fragment",),
+}
 #: The frames whose kinetic energy the cross section is looked up at.
 ENERGY_FRAMES = ("center_of_mass", "lab")
 #: How ionization shares the residual energy between the two electrons.
-ENERGY_SHARING = ("equal", "uniform")
+ENERGY_SHARING = ("equal", "uniform", "opal")
+#: The angular distributions of elastic, excitation and ionization scattering.
+SCATTERING_MODELS = ("isotropic", "vahedi_surendra", "okhrimovskyy")
 
-_NO_ENERGY_LOSS = ("elastic", "backscatter", "attachment", "charge_transfer")
+_NO_ENERGY_LOSS = (
+    "elastic",
+    "backscatter",
+    "attachment",
+    "charge_transfer",
+    "dissociative_attachment",
+)
+_IONIZATION_KINDS = ("ionization", "dissociative_ionization")
 
 
 @dataclass(frozen=True)
@@ -56,6 +80,14 @@ class CollisionProcess:
     cross-section compilations; both agree to O(m_e/M) for electrons), where
     ``g`` is the relative speed and ``mu`` the reduced mass.
 
+    ``scattering`` selects the angular distribution of elastic, excitation,
+    dissociation and ionization collisions: ``"isotropic"``, or for electrons
+    the screened-Coulomb forms of Vahedi and Surendra, Comput. Phys. Commun.
+    87, 179 (1995), and Okhrimovskyy et al., Phys. Rev. E 65, 037402 (2002),
+    which become forward-peaked above a few eV. With isotropic scattering the
+    elastic cross section must be the momentum-transfer cross section; with an
+    anisotropic model it must be the integral elastic cross section.
+
     Attributes:
         kind: One of :data:`PROCESS_KINDS`.
         background: The name of the :class:`~plasmacoll.background.NeutralBackground`.
@@ -67,6 +99,11 @@ class CollisionProcess:
         products: Product species by role, see :data:`PRODUCT_ROLES`, e.g.
             ``{"electron": "e", "ion": "Ar+"}`` for ionization.
         energy_sharing: One of :data:`ENERGY_SHARING`, for ionization.
+            ``"opal"`` samples the secondary electron's energy from the
+            Opal-Peterson-Beaty distribution ``1 / (1 + (E_s / w)^2)``.
+        sharing_energy: The parameter ``w`` in eV of ``"opal"`` sharing, of
+            order the ionization energy (e.g. 10.0 for argon, 8.3 for H2).
+        scattering: One of :data:`SCATTERING_MODELS`.
     """
 
     kind: str
@@ -77,6 +114,8 @@ class CollisionProcess:
     energy_frame: str = "center_of_mass"
     products: Mapping[str, str] = field(default_factory=dict)
     energy_sharing: str = "equal"
+    sharing_energy: float | None = None
+    scattering: str = "isotropic"
 
     def __post_init__(self) -> None:
         """Validate the process definition."""
@@ -88,6 +127,12 @@ class CollisionProcess:
             raise ValueError(f"energy_frame must be one of {ENERGY_FRAMES}")
         if self.energy_sharing not in ENERGY_SHARING:
             raise ValueError(f"energy_sharing must be one of {ENERGY_SHARING}")
+        if self.energy_sharing == "opal" and not (
+            self.sharing_energy is not None and self.sharing_energy > 0.0
+        ):
+            raise ValueError('energy_sharing="opal" needs sharing_energy > 0')
+        if self.scattering not in SCATTERING_MODELS:
+            raise ValueError(f"scattering must be one of {SCATTERING_MODELS}")
         missing = set(PRODUCT_ROLES[self.kind]) - set(self.products)
         if missing:
             raise ValueError(
@@ -107,6 +152,11 @@ class CollisionProcess:
         object.__setattr__(self, "products", dict(self.products))
         if not self.name:
             object.__setattr__(self, "name", f"{self.kind}:{self.background}")
+
+    @property
+    def is_ionization(self) -> bool:
+        """Return whether the process creates an electron-ion pair."""
+        return self.kind in _IONIZATION_KINDS
 
     @property
     def loss(self) -> float:
