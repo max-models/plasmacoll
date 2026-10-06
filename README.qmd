@@ -119,7 +119,8 @@ make docs-build       # the static site in docs/dist
 
 ## Releases
 
-[release-please](https://github.com/googleapis/release-please) keeps a release PR open on
-`main` from the commit messages. Merging it tags the release, updates `CHANGELOG.md` and
-publishes the package to PyPI with trusted publishing (OIDC). See the
+Before merging a release to `main`, update the version in `pyproject.toml` and
+`src/plasmacoll/__init__.py`, and add the release notes to `CHANGELOG.md`. The push to `main`
+creates a GitHub release with a `vX.Y.Z` tag and publishes the package to PyPI with trusted
+publishing (OIDC). See the
 [publishing guide](https://max-models.github.io/plasmacoll/development/publishing/).
