@@ -7,7 +7,7 @@ sidebar:
 
 ## Protons in hydrogen
 
-`pymcc.proton_hydrogen_processes(cross_sections, h2_ion=None)` builds the six processes that
+`plasmacoll.proton_hydrogen_processes(cross_sections, h2_ion=None)` builds the six processes that
 dominate proton transport in the driver and expansion region of an RF-driven negative hydrogen
 ion source (the test-particle model of Wünderlich et al.):
 
@@ -32,18 +32,18 @@ H⁻ is produced in the volume by dissociative attachment, $e + \mathrm{H_2}(v) 
 (Bardsley and Wadehra 1979; Wadehra 1984). A model that uses one ground-state cross section for
 all of H₂ gets the production rate wrong by orders of magnitude.
 
-`pymcc.vibrational` supplies a *prescribed* population: the H₂(X) vibrational ladder of
+`plasmacoll.vibrational` supplies a *prescribed* population: the H₂(X) vibrational ladder of
 Fantz and Wünderlich (At. Data Nucl. Data Tables **92**, 853 (2006)) with a Boltzmann distribution
 at one vibrational temperature.
 
 ```python
-from pymcc.vibrational import VibrationalDistribution
+from plasmacoll.vibrational import VibrationalDistribution
 
 distribution = VibrationalDistribution.h2_ground_state_from_kelvin(5000.0)
 distribution.populations  # n_v / n for v = 0..14
 distribution.fraction_at_least(4)  # [H2(v >= 4)] / [H2]
 
-attachment = pymcc.CrossSection.vibrational_mixture(
+attachment = plasmacoll.CrossSection.vibrational_mixture(
     level_tables, distribution.populations
 )
 ```
@@ -54,6 +54,6 @@ the vibrational kinetics. `estimate_electronegativity` turns the excited fractio
 order-of-magnitude $[\mathrm{H^-}]/[e]$ from the balance of attachment against detachment by H
 atoms (Kimura and Kasugai 2010, as given by Krištof et al. 2019).
 
-pymcc does not ship level-resolved attachment cross sections. Read them from tables with
-`CrossSection.from_table`. [Tutorial 5](/pymcc/tutorials/05-hydrogen-negative-ions/) runs the
+plasmacoll does not ship level-resolved attachment cross sections. Read them from tables with
+`CrossSection.from_table`. [Tutorial 5](/plasmacoll/tutorials/05-hydrogen-negative-ions/) runs the
 pipeline with synthetic levels.

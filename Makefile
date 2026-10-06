@@ -36,9 +36,10 @@ lint:  ## ruff, pyright and ty
 readme:  ## render README.md from README.qmd with quarto
 	quarto render README.qmd --to gfm
 
-readme-check:  ## fail if README.md is out of date with README.qmd
+readme-check:  ## fail if README.md is out of date with README.qmd or its example is not ruff-formatted
 	$(MAKE) readme
 	git diff --exit-code README.md
+	uvx ruff format --check README.md
 
 docs-install:  ## Python docs extra and the npm packages
 	$(PYTHON) -m pip install -e ".[docs]"
@@ -48,7 +49,7 @@ docs-notebooks:  ## execute the changed tutorials and convert all of them (FORCE
 	$(NOTEBOOKS) execute $(if $(FORCE),--force,)
 	$(NOTEBOOKS) convert
 
-docs-dev:  ## live preview at http://localhost:4321/pymcc/
+docs-dev:  ## live preview at http://localhost:4321/plasmacoll/
 	$(NOTEBOOKS) convert
 	cd docs && $(DOCS_ENV) DOCS_VALIDATE_LINKS=false npm run dev
 

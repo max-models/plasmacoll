@@ -47,7 +47,7 @@ factor $(m+M)/M$, so pick the one the data was tabulated in.
 
 ## Process sets for hydrogen
 
-`pymcc.proton_hydrogen_processes` returns the six processes of a test-particle model for protons
+`plasmacoll.proton_hydrogen_processes` returns the six processes of a test-particle model for protons
 in negative-ion sources: momentum transfer with H and H₂, charge exchange with H (backscatter) and
 H₂ (charge transfer), and rotational and vibrational excitation of H₂. It takes the cross-section
-tables as input. See [negative-ion sources](/pymcc/guides/negative-ion-sources/).
+tables as input. See [negative-ion sources](/plasmacoll/guides/negative-ion-sources/).

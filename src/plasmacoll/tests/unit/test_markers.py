@@ -5,8 +5,8 @@ from __future__ import annotations
 import cunumpy as xp
 import pytest
 
-from pymcc import MarkerSet, ParticleArrays
-from pymcc.constants import BOLTZMANN, ELEMENTARY_CHARGE
+from plasmacoll import MarkerSet, ParticleArrays
+from plasmacoll.constants import BOLTZMANN, ELEMENTARY_CHARGE
 
 from ._helpers import M_HE
 

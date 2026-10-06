@@ -7,22 +7,24 @@ Define the cross sections, the neutral gas and the processes, build a `MonteCarl
 operator, and collide markers with it:
 
 ```python
-import pymcc
-from pymcc.constants import ATOMIC_MASS, ELECTRON_MASS, ev_to_kelvin
+import plasmacoll
+from plasmacoll.constants import ATOMIC_MASS, ELECTRON_MASS, ev_to_kelvin
 
 argon_mass = 39.95 * ATOMIC_MASS
-gas = pymcc.NeutralBackground("Ar", density=1e21, temperature=300.0, mass=argon_mass)
+gas = plasmacoll.NeutralBackground(
+    "Ar", density=1e21, temperature=300.0, mass=argon_mass
+)
 
-elastic = pymcc.CrossSection.constant(1e-19)  # m^2
-ionization = pymcc.CrossSection.from_table("ionization.dat", threshold=15.76)
+elastic = plasmacoll.CrossSection.constant(1e-19)  # m^2
+ionization = plasmacoll.CrossSection.from_table("ionization.dat", threshold=15.76)
 
-mcc = pymcc.MonteCarloCollisions(
+mcc = plasmacoll.MonteCarloCollisions(
     species_masses={"e": ELECTRON_MASS, "Ar+": argon_mass},
     backgrounds=[gas],
     processes={
         "e": [
-            pymcc.CollisionProcess("elastic", "Ar", elastic, energy_frame="lab"),
-            pymcc.CollisionProcess(
+            plasmacoll.CollisionProcess("elastic", "Ar", elastic, energy_frame="lab"),
+            plasmacoll.CollisionProcess(
                 "ionization",
                 "Ar",
                 ionization,
@@ -58,10 +60,10 @@ result.diagnostics.counts
 products once all species have collided:
 
 ```python
-electrons = pymcc.ParticleArrays.maxwellian(
+electrons = plasmacoll.ParticleArrays.maxwellian(
     100_000, ELECTRON_MASS, ev_to_kelvin(5.0), seed=2
 )
-ions = pymcc.ParticleArrays.empty()
+ions = plasmacoll.ParticleArrays.empty()
 diagnostics = mcc.collide_species({"e": electrons, "Ar+": ions}, dt=1e-11)
 ```
 
@@ -71,10 +73,10 @@ diagnostics = mcc.collide_species({"e": electrons, "Ar+": ions}, dt=1e-11)
 collision counts as arrays over time:
 
 ```python
-reactor = pymcc.ZeroDReactor(mcc, {"e": electrons}, volume=1e-6)
+reactor = plasmacoll.ZeroDReactor(mcc, {"e": electrons}, volume=1e-6)
 history = reactor.run(dt=1e-11, num_steps=1000, every=10)
 history.density["Ar+"]  # m^-3, one value per recorded step
 ```
 
-Next: [the null-collision method](/pymcc/guides/null-collision-method/), or the
-[tutorials](/pymcc/tutorials/).
+Next: [the null-collision method](/plasmacoll/guides/null-collision-method/), or the
+[tutorials](/plasmacoll/tutorials/).

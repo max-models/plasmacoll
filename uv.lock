@@ -2559,6 +2559,70 @@ wheels = [
 ]
 
 [[package]]
+name = "plasmacoll"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "cunumpy" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "griffe" },
+    { name = "ipykernel", version = "7.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "ipykernel", version = "7.4.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "jupyterlab" },
+    { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "matplotlib", version = "3.11.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "nbclient" },
+    { name = "nbformat" },
+    { name = "pre-commit" },
+    { name = "pyproject-fmt" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "ty" },
+]
+docs = [
+    { name = "griffe" },
+    { name = "ipykernel", version = "7.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "ipykernel", version = "7.4.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "matplotlib", version = "3.11.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "nbclient" },
+    { name = "nbformat" },
+]
+test = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cunumpy", specifier = ">=0.5" },
+    { name = "griffe", marker = "extra == 'docs'" },
+    { name = "ipykernel", marker = "extra == 'docs'" },
+    { name = "jupyterlab", marker = "extra == 'dev'" },
+    { name = "matplotlib", marker = "extra == 'docs'" },
+    { name = "nbclient", marker = "extra == 'docs'", specifier = ">=0.11.0" },
+    { name = "nbformat", marker = "extra == 'docs'", specifier = ">=5.11.1" },
+    { name = "numpy" },
+    { name = "plasmacoll", extras = ["test", "docs"], marker = "extra == 'dev'" },
+    { name = "pre-commit", marker = "extra == 'dev'" },
+    { name = "pyproject-fmt", marker = "extra == 'dev'" },
+    { name = "pyright", marker = "extra == 'dev'" },
+    { name = "pytest", marker = "extra == 'test'" },
+    { name = "pytest-cov", marker = "extra == 'test'" },
+    { name = "ruff", marker = "extra == 'dev'" },
+    { name = "ty", marker = "extra == 'dev'" },
+]
+provides-extras = ["dev", "docs", "test"]
+
+[[package]]
 name = "platformdirs"
 version = "4.12.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2676,70 +2740,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/49/2e/ced460408999b33da
 wheels = [
     { url = "https://files.pythonhosted.org/packages/71/46/17f022dd3e953bf20a04a028a21ec746d942f8d2af30fa0f124fa0e6a684/pygments-2.21.0-py3-none-any.whl", hash = "sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9", size = 1250147, upload-time = "2026-08-17T08:02:44.912Z" },
 ]
-
-[[package]]
-name = "pymcc"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "cunumpy" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
-    { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "griffe" },
-    { name = "ipykernel", version = "7.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "ipykernel", version = "7.4.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "jupyterlab" },
-    { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "matplotlib", version = "3.11.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "nbclient" },
-    { name = "nbformat" },
-    { name = "pre-commit" },
-    { name = "pyproject-fmt" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-    { name = "ty" },
-]
-docs = [
-    { name = "griffe" },
-    { name = "ipykernel", version = "7.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "ipykernel", version = "7.4.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "matplotlib", version = "3.11.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "nbclient" },
-    { name = "nbformat" },
-]
-test = [
-    { name = "pytest" },
-    { name = "pytest-cov" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "cunumpy", specifier = ">=0.5" },
-    { name = "griffe", marker = "extra == 'docs'" },
-    { name = "ipykernel", marker = "extra == 'docs'" },
-    { name = "jupyterlab", marker = "extra == 'dev'" },
-    { name = "matplotlib", marker = "extra == 'docs'" },
-    { name = "nbclient", marker = "extra == 'docs'", specifier = ">=0.10" },
-    { name = "nbformat", marker = "extra == 'docs'", specifier = ">=5.10" },
-    { name = "numpy" },
-    { name = "pre-commit", marker = "extra == 'dev'" },
-    { name = "pymcc", extras = ["test", "docs"], marker = "extra == 'dev'" },
-    { name = "pyproject-fmt", marker = "extra == 'dev'" },
-    { name = "pyright", marker = "extra == 'dev'" },
-    { name = "pytest", marker = "extra == 'test'" },
-    { name = "pytest-cov", marker = "extra == 'test'" },
-    { name = "ruff", marker = "extra == 'dev'" },
-    { name = "ty", marker = "extra == 'dev'" },
-]
-provides-extras = ["dev", "docs", "test"]
 
 [[package]]
 name = "pyparsing"

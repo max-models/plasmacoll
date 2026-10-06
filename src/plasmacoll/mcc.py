@@ -52,11 +52,11 @@ from typing import Any, NamedTuple
 import cunumpy as xp
 import numpy as np
 
-from pymcc._types import Array
-from pymcc.background import NeutralBackground
-from pymcc.constants import ELEMENTARY_CHARGE
-from pymcc.markers import MarkerSet
-from pymcc.process import CollisionProcess
+from plasmacoll._types import Array
+from plasmacoll.background import NeutralBackground
+from plasmacoll.constants import ELEMENTARY_CHARGE
+from plasmacoll.markers import MarkerSet
+from plasmacoll.process import CollisionProcess
 
 __all__ = [
     "MCCDiagnostics",
@@ -581,7 +581,7 @@ class MonteCarloCollisions:
 
         Args:
             species: Marker sets by species name, e.g.
-                :class:`~pymcc.markers.ParticleArrays`. Species without
+                :class:`~plasmacoll.markers.ParticleArrays`. Species without
                 processes are only receivers of products.
             dt: The time step in s.
 

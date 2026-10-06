@@ -1,7 +1,7 @@
 """A zero-dimensional (spatially homogeneous) reactor advanced by collisions alone.
 
 :class:`ZeroDReactor` evolves the velocity distributions and densities of a
-set of species with :class:`~pymcc.mcc.MonteCarloCollisions` and nothing else:
+set of species with :class:`~plasmacoll.mcc.MonteCarloCollisions` and nothing else:
 there is no field, no push and no boundary. It is the tool for testing a
 cross-section set or a reaction chain (rate coefficients, thresholds,
 ionization against attachment, relaxation to the gas temperature) without the
@@ -15,8 +15,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from pymcc.markers import ParticleArrays
-from pymcc.mcc import MonteCarloCollisions
+from plasmacoll.markers import ParticleArrays
+from plasmacoll.mcc import MonteCarloCollisions
 
 __all__ = ["ReactorHistory", "ReactorState", "ZeroDReactor"]
 

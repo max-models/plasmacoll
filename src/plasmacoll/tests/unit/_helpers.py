@@ -6,13 +6,18 @@ import math
 
 import cunumpy as xp
 
-from pymcc import (
+from plasmacoll import (
     CollisionProcess,
     CrossSection,
     MonteCarloCollisions,
     NeutralBackground,
 )
-from pymcc.constants import ATOMIC_MASS, ELECTRON_MASS, ELEMENTARY_CHARGE, PROTON_MASS
+from plasmacoll.constants import (
+    ATOMIC_MASS,
+    ELECTRON_MASS,
+    ELEMENTARY_CHARGE,
+    PROTON_MASS,
+)
 
 M_E = ELECTRON_MASS
 M_P = PROTON_MASS

@@ -5,7 +5,7 @@ expansion region of an RF-driven negative hydrogen ion source (the test-particle
 model of Wünderlich et al.):
 
 ========  ==============================  =================  =============
-key       reaction                        pymcc kind        energy frame
+key       reaction                        plasmacoll kind        energy frame
 ========  ==============================  =================  =============
 mt_h      ``H+ + H  -> H+ + H``           ``elastic``        centre of mass
 mt_h2     ``H+ + H2 -> H+ + H2``          ``elastic``        lab
@@ -36,8 +36,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from pymcc.cross_sections import CrossSection
-from pymcc.process import CollisionProcess
+from plasmacoll.cross_sections import CrossSection
+from plasmacoll.process import CollisionProcess
 
 __all__ = [
     "H2_ROTATIONAL_EXCITATION_EV",

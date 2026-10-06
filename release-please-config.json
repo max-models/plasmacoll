@@ -4,10 +4,10 @@
   "include-component-in-tag": false,
   "packages": {
     ".": {
-      "package-name": "pymcc",
+      "package-name": "plasmacoll",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        "src/pymcc/__init__.py",
+        "src/plasmacoll/__init__.py",
         { "type": "generic", "path": "CITATION.cff" }
       ]
     }

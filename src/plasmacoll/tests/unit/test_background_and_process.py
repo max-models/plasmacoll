@@ -7,8 +7,8 @@ import math
 import cunumpy as xp
 import pytest
 
-from pymcc import CollisionProcess, DensityProfile, NeutralBackground, make_rng
-from pymcc.constants import BOLTZMANN
+from plasmacoll import CollisionProcess, DensityProfile, NeutralBackground, make_rng
+from plasmacoll.constants import BOLTZMANN
 
 from ._helpers import M_P, constant
 

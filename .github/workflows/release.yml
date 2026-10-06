@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/pymcc/
+      url: https://pypi.org/project/plasmacoll/
     permissions:
       id-token: write
       contents: read

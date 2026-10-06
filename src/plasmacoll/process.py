@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from pymcc.cross_sections import CrossSection
+from plasmacoll.cross_sections import CrossSection
 
 __all__ = [
     "ENERGY_FRAMES",
@@ -16,7 +16,7 @@ __all__ = [
     "CollisionProcess",
 ]
 
-#: The collision kinds :class:`~pymcc.mcc.MonteCarloCollisions` implements.
+#: The collision kinds :class:`~plasmacoll.mcc.MonteCarloCollisions` implements.
 PROCESS_KINDS = (
     "elastic",
     "backscatter",
@@ -58,7 +58,7 @@ class CollisionProcess:
 
     Attributes:
         kind: One of :data:`PROCESS_KINDS`.
-        background: The name of the :class:`~pymcc.background.NeutralBackground`.
+        background: The name of the :class:`~plasmacoll.background.NeutralBackground`.
         cross_section: The cross section against energy.
         name: A unique name for diagnostics; ``"<kind>:<background>"`` if empty.
         energy_loss: Energy in eV lost by excitation, ionization and detachment;
