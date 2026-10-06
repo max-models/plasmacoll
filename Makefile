@@ -48,7 +48,7 @@ docs-notebooks:  ## execute the changed tutorials and convert all of them (FORCE
 	$(NOTEBOOKS) execute $(if $(FORCE),--force,)
 	$(NOTEBOOKS) convert
 
-docs-dev:  ## live preview at http://localhost:4321/pymcc/
+docs-dev:  ## live preview at http://localhost:4321/plasmacoll/
 	$(NOTEBOOKS) convert
 	cd docs && $(DOCS_ENV) DOCS_VALIDATE_LINKS=false npm run dev
 

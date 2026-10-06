@@ -8,8 +8,8 @@ from typing import Any
 
 import cunumpy as xp
 
-from pymcc._types import Array
-from pymcc.constants import BOLTZMANN
+from plasmacoll._types import Array
+from plasmacoll.constants import BOLTZMANN
 
 __all__ = ["DensityProfile", "NeutralBackground"]
 

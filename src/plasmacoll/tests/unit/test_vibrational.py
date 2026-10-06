@@ -7,15 +7,15 @@ import math
 import cunumpy as xp
 import pytest
 
-from pymcc import (
+from plasmacoll import (
     CollisionProcess,
     CrossSection,
     MonteCarloCollisions,
     NeutralBackground,
     ParticleArrays,
 )
-from pymcc.constants import kelvin_to_ev
-from pymcc.vibrational import (
+from plasmacoll.constants import kelvin_to_ev
+from plasmacoll.vibrational import (
     H2_GROUND_STATE_VIBRATIONAL_ENERGY_EV,
     VibrationalDistribution,
     boltzmann_level_populations,

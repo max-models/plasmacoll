@@ -9,7 +9,7 @@ import cunumpy as xp
 import numpy as np
 import pytest
 
-from pymcc import (
+from plasmacoll import (
     CollisionProcess,
     CrossSection,
     DensityProfile,
@@ -18,7 +18,7 @@ from pymcc import (
     ParticleArrays,
     make_rng,
 )
-from pymcc.constants import BOLTZMANN
+from plasmacoll.constants import BOLTZMANN
 
 from ._helpers import (
     HEAVY,

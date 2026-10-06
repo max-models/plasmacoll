@@ -23,7 +23,7 @@ Kimura and Kasugai 2010).
 It does **not** solve the vibrational kinetics (electron-impact excitation,
 V-V/V-T relaxation, wall association) self-consistently. It also does **not**
 ship level-resolved DA cross sections (Wadehra 1984; Fabrikant; Celiberto):
-:meth:`pymcc.cross_sections.CrossSection.vibrational_mixture` takes them as
+:meth:`plasmacoll.cross_sections.CrossSection.vibrational_mixture` takes them as
 input from the user.
 """
 
@@ -33,8 +33,8 @@ from dataclasses import dataclass
 
 import cunumpy as xp
 
-from pymcc._types import Array
-from pymcc.constants import kelvin_to_ev
+from plasmacoll._types import Array
+from plasmacoll.constants import kelvin_to_ev
 
 __all__ = [
     "H2_GROUND_STATE_VIBRATIONAL_ENERGY_EV",

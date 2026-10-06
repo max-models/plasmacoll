@@ -23,5 +23,5 @@ safety factor, and the expectations are exact functions of the step count:
 | density profile                              | collision probability proportional to the local density, zero where it is zero       | 5–8 %     |
 
 The whole suite runs on NumPy and on cunumpy's stand-in for CuPy in CI, and the combined
-coverage of the two runs is 100 %. The [tutorials](/pymcc/tutorials/) plot several of these
+coverage of the two runs is 100 %. The [tutorials](/plasmacoll/tutorials/) plot several of these
 comparisons.

@@ -7,11 +7,11 @@ import starlightPydocs, { pydocsSidebarGroup } from 'starlight-pydocs';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 
-// The site is served at https://max-models.github.io/pymcc/ by GitHub Pages.
-const base = '/pymcc';
+// The site is served at https://max-models.github.io/plasmacoll/ by GitHub Pages.
+const base = '/plasmacoll';
 
 // The Python package documented under "API reference" (the directory name in src/).
-const pythonPackage = 'pymcc';
+const pythonPackage = 'plasmacoll';
 
 export default defineConfig({
 	site: 'https://max-models.github.io',
@@ -22,16 +22,16 @@ export default defineConfig({
 	},
 	integrations: [
 		starlight({
-			title: 'pymcc',
+			title: 'plasmacoll',
 			description: 'Null-collision Monte Carlo collisions of charged particles with neutral gases.',
 			customCss: ['katex/dist/katex.min.css', './src/styles/custom.css'],
 			components: {
 				Header: './src/components/Header.astro',
 			},
 			social: [
-				{ icon: 'github', label: 'GitHub', href: 'https://github.com/max-models/pymcc' },
+				{ icon: 'github', label: 'GitHub', href: 'https://github.com/max-models/plasmacoll' },
 			],
-			editLink: { baseUrl: 'https://github.com/max-models/pymcc/edit/devel/docs/' },
+			editLink: { baseUrl: 'https://github.com/max-models/plasmacoll/edit/devel/docs/' },
 			lastUpdated: true,
 			plugins: [
 				starlightPydocs({
@@ -46,7 +46,7 @@ export default defineConfig({
 							},
 							sourceLink: {
 								host: 'github',
-								repo: 'max-models/pymcc',
+								repo: 'max-models/plasmacoll',
 								ref: 'devel',
 								root: '..',
 							},

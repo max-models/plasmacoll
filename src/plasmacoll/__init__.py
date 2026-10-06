@@ -1,6 +1,6 @@
 """Null-collision Monte Carlo collisions of charged particles with neutral gases.
 
-pymcc collides markers (positions, velocities and weights in NumPy or CuPy
+plasmacoll collides markers (positions, velocities and weights in NumPy or CuPy
 arrays, through :mod:`cunumpy`) with prescribed Maxwellian neutral backgrounds:
 elastic and backscatter collisions, excitation, ionization, attachment,
 detachment and charge transfer, with cross sections from tables, LXCat files
@@ -8,36 +8,36 @@ or functions. It is the collision step of a particle-in-cell code, or with
 :class:`ZeroDReactor` a homogeneous reactor for testing cross-section sets.
 
 Example:
-    >>> import pymcc
-    >>> from pymcc.constants import ELECTRON_MASS, ATOMIC_MASS
-    >>> mcc = pymcc.MonteCarloCollisions(
+    >>> import plasmacoll
+    >>> from plasmacoll.constants import ELECTRON_MASS, ATOMIC_MASS
+    >>> mcc = plasmacoll.MonteCarloCollisions(
     ...     species_masses={"e": ELECTRON_MASS},
-    ...     backgrounds=[pymcc.NeutralBackground("Ar", 1e21, 300.0, 39.95 * ATOMIC_MASS)],
-    ...     processes={"e": [pymcc.CollisionProcess(
-    ...         "elastic", "Ar", pymcc.CrossSection.constant(1e-19))]},
+    ...     backgrounds=[plasmacoll.NeutralBackground("Ar", 1e21, 300.0, 39.95 * ATOMIC_MASS)],
+    ...     processes={"e": [plasmacoll.CollisionProcess(
+    ...         "elastic", "Ar", plasmacoll.CrossSection.constant(1e-19))]},
     ...     seed=1,
     ... )
 """
 
-from pymcc.background import DensityProfile, NeutralBackground
-from pymcc.cross_sections import (
+from plasmacoll.background import DensityProfile, NeutralBackground
+from plasmacoll.cross_sections import (
     CrossSection,
     LXCatProcess,
     find_lxcat_process,
     read_lxcat,
 )
-from pymcc.hydrogen import proton_hydrogen_processes
-from pymcc.markers import MarkerSet, ParticleArrays
-from pymcc.mcc import (
+from plasmacoll.hydrogen import proton_hydrogen_processes
+from plasmacoll.markers import MarkerSet, ParticleArrays
+from plasmacoll.mcc import (
     MCCDiagnostics,
     MCCResult,
     MonteCarloCollisions,
     NewMarkers,
     make_rng,
 )
-from pymcc.process import CollisionProcess
-from pymcc.reactor import ReactorHistory, ReactorState, ZeroDReactor
-from pymcc.vibrational import (
+from plasmacoll.process import CollisionProcess
+from plasmacoll.reactor import ReactorHistory, ReactorState, ZeroDReactor
+from plasmacoll.vibrational import (
     VibrationalDistribution,
     boltzmann_level_populations,
     estimate_electronegativity,

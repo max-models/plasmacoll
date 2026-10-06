@@ -59,11 +59,11 @@ jobs:
       - name: Smoke test the built site
         working-directory: docs
         run: |
-          for page in /index.html /getting-started/installation/index.html /guides/null-collision-method/index.html /tutorials/02-relaxation/index.html /api/pymcc/index.html /api/pymcc/mcc/index.html /api/pymcc/cross_sections/index.html; do
+          for page in /index.html /getting-started/installation/index.html /guides/null-collision-method/index.html /tutorials/02-relaxation/index.html /api/plasmacoll/index.html /api/plasmacoll/mcc/index.html /api/plasmacoll/cross_sections/index.html; do
             test -f "dist$page" || { echo "missing dist$page"; exit 1; }
           done
-          grep -q 'href="/pymcc/' dist/index.html || { echo "links do not use the base path"; exit 1; }
-          echo "all pages built with the /pymcc base path"
+          grep -q 'href="/plasmacoll/' dist/index.html || { echo "links do not use the base path"; exit 1; }
+          echo "all pages built with the /plasmacoll base path"
 
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -5,13 +5,13 @@ sidebar:
   order: 4
 ---
 
-In a particle-in-cell (PIC) cycle the collision step sits between pushes. pymcc never sees the
+In a particle-in-cell (PIC) cycle the collision step sits between pushes. plasmacoll never sees the
 fields or the grid, only the markers of each species.
 
 ## The marker-set protocol
 
 `collide_species` accepts any object with three array attributes and two methods (the
-`pymcc.MarkerSet` protocol):
+`plasmacoll.MarkerSet` protocol):
 
 | Member                                  | Meaning                                                     |
 | --------------------------------------- | ----------------------------------------------------------- |
@@ -68,7 +68,7 @@ independent random streams, and the run is reproducible for a fixed seed and ran
 
 ## GPUs
 
-pymcc uses [cunumpy](https://pypi.org/project/cunumpy/) for all array operations. With the CuPy
+plasmacoll uses [cunumpy](https://pypi.org/project/cunumpy/) for all array operations. With the CuPy
 backend selected, pass CuPy arrays. The bound tables stay on the host (a handful of floats), and
 everything per marker runs on the device. With a generator other than NumPy's, such as CuPy's,
 the candidate selection draws one random number per marker, which runs in parallel on the device.

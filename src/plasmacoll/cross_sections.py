@@ -17,8 +17,8 @@ from pathlib import Path
 import cunumpy as xp
 import numpy as np
 
-from pymcc._types import Array, PathLikeStr
-from pymcc.constants import ELEMENTARY_CHARGE
+from plasmacoll._types import Array, PathLikeStr
+from plasmacoll.constants import ELEMENTARY_CHARGE
 
 __all__ = [
     "LXCAT_PROCESS_KINDS",
@@ -194,7 +194,7 @@ class CrossSection:
         per-level cross sections. Use it with level-resolved data (for example
         H2(v) dissociative attachment from Wadehra, Phys. Rev. A 29, 106 (1984),
         or an LXCat entry) and the populations of a
-        :class:`~pymcc.vibrational.VibrationalDistribution`.
+        :class:`~plasmacoll.vibrational.VibrationalDistribution`.
 
         If ``populations`` covers only some of a distribution's levels, the
         omitted levels' population is redistributed among the included ones by

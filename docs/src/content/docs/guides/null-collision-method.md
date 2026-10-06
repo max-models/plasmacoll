@@ -13,7 +13,7 @@ relative speed $g = |\mathbf v - \mathbf w|$. Process $k$ has the collision freq
 $$\nu_k(g) = n_b\,\sigma_k(E)\,g,$$
 
 where $n_b$ is the neutral density and $E$ the energy the cross section is tabulated against
-(see [energy frames](/pymcc/guides/collision-processes/#energy-frames)).
+(see [energy frames](/plasmacoll/guides/collision-processes/#energy-frames)).
 
 ## One step
 
@@ -29,7 +29,7 @@ where $n_b$ is the neutral density and $E$ the energy the cross section is tabul
    $\sum_{j<k}\nu_j < R\,\nu_{\max} \le \sum_{j\le k}\nu_j$, and a *null* collision (nothing
    happens) if $R\,\nu_{\max}$ exceeds the total.
 4. **Kinematics.** The chosen process changes the velocity, removes the marker or creates
-   products. See [collision processes](/pymcc/guides/collision-processes/).
+   products. See [collision processes](/plasmacoll/guides/collision-processes/).
 
 Real collisions of process $k$ thus happen with probability $P\,\nu_k/\nu_{\max}$ per step. That
 is $\nu_k\Delta t$ to first order, independent of the bound.
@@ -59,7 +59,7 @@ and it is exact.
 A marker collides at most once per step, and products do not collide in the step that created
 them. Rates are therefore correct to first order in $\nu_{\max}\Delta t$. A population that
 ionizes at constant $\nu$ grows by $(1 + P)$ per step instead of $e^{\nu\Delta t}$, which
-[tutorial 3](/pymcc/tutorials/03-ionization-attachment/) measures. Keep
+[tutorial 3](/plasmacoll/tutorials/03-ionization-attachment/) measures. Keep
 $\nu_{\max}\Delta t \lesssim 0.1$ (a few percent error on the rate), or collide every $m$ steps
 with $m\Delta t$ only if $\nu_{\max} m\Delta t$ stays that small.
 

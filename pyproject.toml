@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 requires = [ "setuptools", "wheel" ]
 
 [project]
-name = "pymcc"
+name = "plasmacoll"
 version = "0.1.0"
 description = "Null-collision Monte Carlo collisions of charged particles with neutral gases, on NumPy or CuPy arrays."
 readme = "README.md"
@@ -33,7 +33,7 @@ optional-dependencies.dev = [
   "pyright",
   "ruff",
   "ty",
-  "pymcc[test,docs]",
+  "plasmacoll[test,docs]",
 ]
 optional-dependencies.docs = [
   "griffe",
@@ -43,7 +43,7 @@ optional-dependencies.docs = [
   "nbformat>=5.11.1",
 ]
 optional-dependencies.test = [ "pytest", "pytest-cov" ]
-urls."Source" = "https://github.com/max-models/pymcc"
+urls."Source" = "https://github.com/max-models/plasmacoll"
 
 [tool.setuptools.packages.find]
 where = [ "src" ]
@@ -81,7 +81,7 @@ testpaths = [ "src" ]
 addopts = "-ra"
 
 [tool.coverage.run]
-source = [ "pymcc" ]
+source = [ "plasmacoll" ]
 omit = [ "*/tests/*" ]
 
 [tool.coverage.report]

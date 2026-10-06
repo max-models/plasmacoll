@@ -7,7 +7,7 @@ description: Publish the package to PyPI and the documentation to GitHub Pages.
 
 The `Docs` workflow builds the site on every push and pull request to `main` and `devel`. It
 executes the tutorials, generates the API reference and uploads the site. Pushes to `devel`
-also deploy it to GitHub Pages at https://max-models.github.io/pymcc/.
+also deploy it to GitHub Pages at https://max-models.github.io/plasmacoll/.
 
 Enable GitHub Pages once in the repository settings, with "GitHub Actions" as the source.
 
@@ -28,9 +28,9 @@ A tag pushed by hand (`git tag v1.2.3 && git push --tags`) also publishes.
 
 1. Create an account on [PyPI](https://pypi.org/) and create or claim your project name.
 2. In the PyPI project settings go to "Publishing" → "Add a new publisher" and fill in:
-   - **PyPI project name**: `pymcc` (or your project name)
+   - **PyPI project name**: `plasmacoll` (or your project name)
    - **Owner**: your GitHub username or organization
-   - **Repository name**: `pymcc`
+   - **Repository name**: `plasmacoll`
    - **Workflow name**: `release.yml`
    - **Environment name**: `pypi`
 3. Optionally, in the GitHub repository settings create an environment named `pypi` whose
