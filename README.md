@@ -58,7 +58,10 @@ mcc = plasmacoll.MonteCarloCollisions(
     processes={
         "e": [
             plasmacoll.CollisionProcess(
-                "elastic", "Ar", plasmacoll.CrossSection.constant(1e-19), energy_frame="lab"
+                "elastic",
+                "Ar",
+                plasmacoll.CrossSection.constant(1e-19),
+                energy_frame="lab",
             ),
             plasmacoll.CollisionProcess(
                 "ionization",
