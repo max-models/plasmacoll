@@ -1,0 +1,48 @@
+---
+title: pymcc
+description: Null-collision Monte Carlo collisions of charged particles with neutral gases, on NumPy or CuPy arrays.
+template: splash
+hero:
+  tagline: Monte Carlo collisions of charged particles with neutral gases, for particle-in-cell codes and 0D reactor studies, on CPU or GPU.
+  actions:
+    - text: Get started
+      link: /pymcc/getting-started/installation/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/max-models/pymcc
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## What it does
+
+<CardGrid>
+	<Card title="Null-collision MCC" icon="random">
+		The method of Vahedi and Surendra (1995). Elastic and backscatter collisions, excitation,
+		ionization, attachment, detachment and charge transfer against Maxwellian neutral gases,
+		uniform or with a density profile.
+	</Card>
+	<Card title="Plain arrays, CPU or GPU" icon="laptop">
+		Markers are positions, velocities and weights in NumPy or CuPy arrays through
+		[cunumpy](https://pypi.org/project/cunumpy/). Any particle container that has them plugs in.
+	</Card>
+	<Card title="Cross sections" icon="document">
+		Tables from text and LXCat files or from functions, Maxwell-molecule cross sections for
+		benchmarks, and population-weighted mixtures of level-resolved cross sections.
+	</Card>
+	<Card title="0D reactor" icon="setting">
+		A homogeneous reactor advanced by collisions alone, for testing cross-section sets and
+		reaction chains before a spatial simulation.
+	</Card>
+</CardGrid>
+
+## Start here
+
+<CardGrid>
+	<LinkCard title="Installation" href="/pymcc/getting-started/installation/" description="Install the package and its extras." />
+	<LinkCard title="Quickstart" href="/pymcc/getting-started/quickstart/" description="Collide electrons with a gas in a few lines." />
+	<LinkCard title="The null-collision method" href="/pymcc/guides/null-collision-method/" description="What one collision step does, and how to choose the time step." />
+	<LinkCard title="Tutorials" href="/pymcc/tutorials/" description="Executed notebooks: relaxation, ionization, EEDFs, negative ions." />
+</CardGrid>

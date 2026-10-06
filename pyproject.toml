@@ -1,0 +1,99 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+
+requires = [ "setuptools", "wheel" ]
+
+[project]
+name = "pymcc"
+version = "0.1.0"
+description = "Null-collision Monte Carlo collisions of charged particles with neutral gases, on NumPy or CuPy arrays."
+readme = "README.md"
+keywords = [ "cross sections", "cupy", "lxcat", "monte carlo collisions", "negative ions", "null collision", "particle-in-cell", "plasma" ]
+license = { file = "LICENSE.txt" }
+authors = [ { name = "Max" } ]
+requires-python = ">=3.10"
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+  "cunumpy>=0.5",
+  "numpy",
+]
+
+optional-dependencies.dev = [
+  "jupyterlab",
+  "pre-commit",
+  "pyproject-fmt",
+  "pyright",
+  "ruff",
+  "ty",
+  "pymcc[test,docs]",
+]
+optional-dependencies.docs = [
+  "griffe",
+  "ipykernel",
+  "matplotlib",
+  "nbclient>=0.11.0",
+  "nbformat>=5.11.1",
+]
+optional-dependencies.test = [ "pytest", "pytest-cov" ]
+urls."Source" = "https://github.com/max-models/pymcc"
+
+[tool.setuptools.packages.find]
+where = [ "src" ]
+
+[tool.setuptools.package-data]
+"*" = [ "py.typed" ]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+extend-include = [ "*.ipynb" ]
+# scratch scripts kept for re-checking results
+extend-exclude = [ ".claude" ]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, pyupgrade, bugbear and pydocstyle
+select = [ "B", "D", "E", "F", "I", "UP", "W" ]
+ignore = [ "E501" ] # line length is handled by the formatter
+pydocstyle.convention = "google"
+per-file-ignores."**/tests/**" = [ "D" ]
+per-file-ignores."*.ipynb" = [ "D" ]
+per-file-ignores."docs/tools/*" = [ "D" ]
+
+[tool.pyright]
+include = [ "src" ]
+venvPath = "."
+venv = ".venv"
+exclude = [ "**/tests" ]
+pythonVersion = "3.10"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+pythonpath = [ "src" ]
+testpaths = [ "src" ]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = [ "pymcc" ]
+omit = [ "*/tests/*" ]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.ty.environment]
+python = ".venv"
+python-version = "3.10"
+
+[tool.ty.src]
+include = [ "src" ]
+
+[tool.ty.analysis]
+# CuPy is optional and not installed in CI
+allowed-unresolved-imports = [ "cupy" ]

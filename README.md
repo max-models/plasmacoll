@@ -1,1 +1,131 @@
-# plasmacoll
+# pymcc
+
+
+<!-- README.md is generated from README.qmd: edit the .qmd and run `make readme`. -->
+
+[![Tests](https://github.com/max-models/pymcc/actions/workflows/test_pytest.yml/badge.svg)](https://github.com/max-models/pymcc/actions/workflows/test_pytest.yml)
+[![Static
+analysis](https://github.com/max-models/pymcc/actions/workflows/static_analysis.yml/badge.svg)](https://github.com/max-models/pymcc/actions/workflows/static_analysis.yml)
+[![Docs](https://github.com/max-models/pymcc/actions/workflows/docs.yml/badge.svg)](https://max-models.github.io/pymcc/)
+[![codecov](https://codecov.io/gh/max-models/pymcc/branch/main/graph/badge.svg)](https://codecov.io/gh/max-models/pymcc)
+[![PyPI](https://img.shields.io/pypi/v/pymcc.png)](https://pypi.org/project/pymcc/)
+[![Python](https://img.shields.io/pypi/pyversions/pymcc.png)](https://pypi.org/project/pymcc/)
+
+Null-collision Monte Carlo collisions (MCC) of charged particles with
+neutral gases, on NumPy or CuPy arrays. It is the collision step of a
+particle-in-cell code, or with `ZeroDReactor` a homogeneous reactor for
+testing cross-section sets.
+
+- **Processes:** elastic, backscatter (resonant charge exchange),
+  excitation, ionization, attachment, detachment and charge transfer,
+  against Maxwellian neutral gases that are uniform or have a density
+  profile.
+- **Cross sections:** from text tables, LXCat files or functions. Also
+  Maxwell molecules for benchmarks, and population-weighted mixtures of
+  level-resolved tables, e.g. H₂(v) dissociative attachment.
+- **Plain arrays:** markers are positions, velocities and weights. Any
+  particle container with those plugs in, and
+  [cunumpy](https://pypi.org/project/cunumpy/) runs the same code on CPU
+  (NumPy) or GPU (CuPy).
+- **Validated:** a 0D reactor reproduces the closed-form relaxation,
+  growth and decay rates of Maxwell-molecule gases. The tests run on
+  NumPy and on a CuPy stand-in, with 100 % combined coverage.
+
+Documentation: <https://max-models.github.io/pymcc/>
+
+![Electron, H₂⁺ and H⁻ densities in a 0D reactor against the analytic
+growth
+rate](https://max-models.github.io/pymcc/tutorials/03-ionization-attachment/1.png)
+
+## Install
+
+``` bash
+pip install pymcc
+```
+
+## Example
+
+``` python
+import pymcc
+from pymcc.constants import ATOMIC_MASS, ELECTRON_MASS, ev_to_kelvin
+
+argon = 39.95 * ATOMIC_MASS
+mcc = pymcc.MonteCarloCollisions(
+    species_masses={"e": ELECTRON_MASS, "Ar+": argon},
+    backgrounds=[
+        pymcc.NeutralBackground("Ar", density=1e21, temperature=300.0, mass=argon)
+    ],
+    processes={
+        "e": [
+            pymcc.CollisionProcess(
+                "elastic", "Ar", pymcc.CrossSection.constant(1e-19), energy_frame="lab"
+            ),
+            pymcc.CollisionProcess(
+                "ionization",
+                "Ar",
+                pymcc.CrossSection.constant(3e-20, threshold=15.76),
+                energy_frame="lab",
+                products={"electron": "e", "ion": "Ar+"},
+            ),
+        ]
+    },
+    seed=1,
+)
+
+electrons = pymcc.ParticleArrays.maxwellian(
+    100_000, ELECTRON_MASS, ev_to_kelvin(10.0), seed=2
+)
+reactor = pymcc.ZeroDReactor(mcc, {"e": electrons}, volume=1e-6)
+history = reactor.run(dt=1e-11, num_steps=500, every=10)
+print(history.density["Ar+"][-1], history.collisions["ionization:Ar"][-1])
+```
+
+In a particle-in-cell code, call
+`mcc.collide(species, positions, velocities, weights, dt)` on arrays, or
+`mcc.collide_species({...}, dt)` on your own particle containers. See
+[Use in a particle-in-cell
+code](https://max-models.github.io/pymcc/guides/particle-in-cell/).
+
+pymcc does not ship cross-section data. Load tables from
+[LXCat](https://lxcat.net) or the literature with `pymcc.read_lxcat` and
+`CrossSection.from_table`.
+
+## Development
+
+With [uv](https://docs.astral.sh/uv/):
+
+``` bash
+make install    # uv sync --extra dev, plus the pre-commit hooks
+make test       # pytest with coverage on NumPy
+make test-cupy  # the same tests on cunumpy's stand-in for CuPy (no GPU needed)
+make coverage   # both runs combined, must be 100 %
+make lint       # ruff check, ruff format --check, pyright, ty
+```
+
+Commit messages follow [Conventional
+Commits](https://www.conventionalcommits.org/).
+
+## Build docs
+
+The documentation in `docs/` is an [Astro](https://astro.build/) +
+[Starlight](https://starlight.astro.build/) site: hand-written guides,
+the notebooks in `tutorials/` executed and published as pages, and the
+API reference generated from the docstrings. It needs Node 22 or newer.
+
+``` bash
+make docs-install     # npm packages and the Python docs extra
+make docs-notebooks   # execute tutorials/*.ipynb and convert them to pages
+make docs-dev         # live preview at http://localhost:4321/pymcc/
+make docs-build       # the static site in docs/dist
+```
+
+`README.md` is rendered from `README.qmd` with
+[Quarto](https://quarto.org/): `make readme`.
+
+## Releases
+
+[release-please](https://github.com/googleapis/release-please) keeps a
+release PR open on `main` from the commit messages. Merging it tags the
+release, updates `CHANGELOG.md` and publishes the package to PyPI with
+trusted publishing (OIDC). See the [publishing
+guide](https://max-models.github.io/pymcc/development/publishing/).
