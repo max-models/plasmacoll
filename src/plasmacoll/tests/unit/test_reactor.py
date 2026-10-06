@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pymcc import (
+from plasmacoll import (
     CollisionProcess,
     CrossSection,
     MonteCarloCollisions,
@@ -24,7 +24,7 @@ from pymcc import (
     ReactorHistory,
     ZeroDReactor,
 )
-from pymcc.constants import BOLTZMANN, ELEMENTARY_CHARGE, ev_to_kelvin
+from plasmacoll.constants import BOLTZMANN, ELEMENTARY_CHARGE, ev_to_kelvin
 
 from ._helpers import M_E, M_HE
 

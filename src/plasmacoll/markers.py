@@ -1,4 +1,4 @@
-"""Marker storage that :meth:`~pymcc.mcc.MonteCarloCollisions.collide_species` works on.
+"""Marker storage that :meth:`~plasmacoll.mcc.MonteCarloCollisions.collide_species` works on.
 
 Any object with ``positions``, ``velocities`` and ``weights`` arrays and
 ``remove``/``add`` methods (the :class:`MarkerSet` protocol) can be collided,
@@ -15,8 +15,8 @@ from typing import Any, Protocol, runtime_checkable
 
 import cunumpy as xp
 
-from pymcc._types import Array
-from pymcc.constants import BOLTZMANN, ELEMENTARY_CHARGE
+from plasmacoll._types import Array
+from plasmacoll.constants import BOLTZMANN, ELEMENTARY_CHARGE
 
 __all__ = ["MarkerSet", "ParticleArrays"]
 
@@ -106,7 +106,7 @@ class ParticleArrays:
         Args:
             num: The number of markers.
             mass: Particle mass in kg.
-            temperature: Temperature in K; see :func:`pymcc.constants.ev_to_kelvin`.
+            temperature: Temperature in K; see :func:`plasmacoll.constants.ev_to_kelvin`.
             weight: Physical particles per marker.
             drift: Mean velocity in m/s.
             ndim: Number of position components.

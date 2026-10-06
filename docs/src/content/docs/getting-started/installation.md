@@ -1,20 +1,20 @@
 ---
 title: Installation
-description: Install pymcc and its optional extras.
+description: Install plasmacoll and its optional extras.
 ---
 
-pymcc needs Python 3.10 or newer. It depends on NumPy and
+plasmacoll needs Python 3.10 or newer. It depends on NumPy and
 [cunumpy](https://pypi.org/project/cunumpy/), which selects NumPy or CuPy as the array backend.
 
 ```bash
-pip install pymcc
+pip install plasmacoll
 ```
 
 For development, clone the repository and install it in editable mode:
 
 ```bash
-git clone https://github.com/max-models/pymcc
-cd pymcc
+git clone https://github.com/max-models/plasmacoll
+cd plasmacoll
 pip install -e ".[dev]"
 ```
 
@@ -32,7 +32,7 @@ On a machine with CuPy installed, select the CuPy backend before the first array
 CUNUMPY_BACKEND=cupy python my_simulation.py
 ```
 
-or `cunumpy.set_backend("cupy")` at the start of the program. pymcc then creates its arrays and
+or `cunumpy.set_backend("cupy")` at the start of the program. plasmacoll then creates its arrays and
 random numbers on the GPU. The test suite also runs on cunumpy's host-memory stand-in for CuPy,
 so the CuPy code paths are checked without a GPU:
 

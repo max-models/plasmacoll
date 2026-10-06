@@ -1,6 +1,11 @@
 import pytest
 
-from pymcc.constants import BOLTZMANN, ELEMENTARY_CHARGE, ev_to_kelvin, kelvin_to_ev
+from plasmacoll.constants import (
+    BOLTZMANN,
+    ELEMENTARY_CHARGE,
+    ev_to_kelvin,
+    kelvin_to_ev,
+)
 
 
 def test_kelvin_and_ev_are_inverse() -> None:

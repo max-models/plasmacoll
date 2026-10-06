@@ -1,4 +1,4 @@
-"""Typing aliases shared by the modules of pymcc."""
+"""Typing aliases shared by the modules of plasmacoll."""
 
 from __future__ import annotations
 

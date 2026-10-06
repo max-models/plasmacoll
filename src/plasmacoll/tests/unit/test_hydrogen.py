@@ -5,13 +5,13 @@ from __future__ import annotations
 import cunumpy as xp
 import pytest
 
-from pymcc import (
+from plasmacoll import (
     CrossSection,
     MonteCarloCollisions,
     NeutralBackground,
     proton_hydrogen_processes,
 )
-from pymcc.hydrogen import PROTON_HYDROGEN_PROCESS_KEYS
+from plasmacoll.hydrogen import PROTON_HYDROGEN_PROCESS_KEYS
 
 from ._helpers import M_P, speed_for
 

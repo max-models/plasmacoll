@@ -9,8 +9,8 @@ import cunumpy as xp
 import numpy as np
 import pytest
 
-from pymcc import CrossSection, find_lxcat_process, read_lxcat
-from pymcc.constants import ELECTRON_MASS, ELEMENTARY_CHARGE
+from plasmacoll import CrossSection, find_lxcat_process, read_lxcat
+from plasmacoll.constants import ELECTRON_MASS, ELEMENTARY_CHARGE
 
 # A synthetic file in LXCat format; the numbers are not physical data.
 LXCAT_EXAMPLE = """\
