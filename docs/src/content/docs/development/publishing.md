@@ -13,16 +13,13 @@ Enable GitHub Pages once in the repository settings, with "GitHub Actions" as th
 
 ## Releases and PyPI
 
-The `Release` workflow uses [release-please](https://github.com/googleapis/release-please).
-On every push to `main` it opens or updates a release pull request from the
-[Conventional Commits](https://www.conventionalcommits.org/) since the last release, with the
-next version and the changelog entry. Merging that pull request:
+Before merging a release to `main`, update the version in `pyproject.toml` and
+`src/plasmacoll/__init__.py`, and add the release notes to `CHANGELOG.md`. On every push to
+`main`, the `Release` workflow:
 
 1. tags the release `vX.Y.Z` and creates the GitHub release,
-2. updates `CHANGELOG.md`, the version in `pyproject.toml` and `__version__` in the package,
-3. builds the package with `uv build` and publishes it to PyPI with trusted publishing (OIDC).
-
-A tag pushed by hand (`git tag v1.2.3 && git push --tags`) also publishes.
+2. builds the package with `uv build` and publishes it to PyPI with trusted publishing (OIDC),
+   if that version is not already on PyPI.
 
 ### One-time configuration
 
