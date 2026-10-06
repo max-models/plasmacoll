@@ -49,34 +49,32 @@ pip install plasmacoll
 import plasmacoll
 from plasmacoll.constants import ATOMIC_MASS, ELECTRON_MASS, ev_to_kelvin
 
-argon = 39.95 * ATOMIC_MASS
+argon_mass = 39.95 * ATOMIC_MASS
+argon_gas = plasmacoll.NeutralBackground(
+    "Ar", density=1e21, temperature=300.0, mass=argon_mass
+)
+
+elastic_xs = plasmacoll.CrossSection.constant(1e-19)
+ionization_xs = plasmacoll.CrossSection.constant(3e-20, threshold=15.76)
+elastic = plasmacoll.CollisionProcess("elastic", "Ar", elastic_xs, energy_frame="lab")
+ionization = plasmacoll.CollisionProcess(
+    "ionization",
+    "Ar",
+    ionization_xs,
+    energy_frame="lab",
+    products={"electron": "e", "ion": "Ar+"},
+)
+
 mcc = plasmacoll.MonteCarloCollisions(
-    species_masses={"e": ELECTRON_MASS, "Ar+": argon},
-    backgrounds=[
-        plasmacoll.NeutralBackground("Ar", density=1e21, temperature=300.0, mass=argon)
-    ],
-    processes={
-        "e": [
-            plasmacoll.CollisionProcess(
-                "elastic",
-                "Ar",
-                plasmacoll.CrossSection.constant(1e-19),
-                energy_frame="lab",
-            ),
-            plasmacoll.CollisionProcess(
-                "ionization",
-                "Ar",
-                plasmacoll.CrossSection.constant(3e-20, threshold=15.76),
-                energy_frame="lab",
-                products={"electron": "e", "ion": "Ar+"},
-            ),
-        ]
-    },
+    species_masses={"e": ELECTRON_MASS, "Ar+": argon_mass},
+    backgrounds=[argon_gas],
+    processes={"e": [elastic, ionization]},
     seed=1,
 )
 
+temperature = ev_to_kelvin(10.0)
 electrons = plasmacoll.ParticleArrays.maxwellian(
-    100_000, ELECTRON_MASS, ev_to_kelvin(10.0), seed=2
+    100_000, ELECTRON_MASS, temperature, seed=2
 )
 reactor = plasmacoll.ZeroDReactor(mcc, {"e": electrons}, volume=1e-6)
 history = reactor.run(dt=1e-11, num_steps=500, every=10)

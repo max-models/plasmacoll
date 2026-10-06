@@ -55,8 +55,9 @@ where = [ "src" ]
 target-version = "py310"
 line-length = 88
 extend-include = [ "*.ipynb" ]
-# scratch scripts kept for re-checking results
-extend-exclude = [ ".claude" ]
+# scratch scripts kept for re-checking results; README.md is rendered from README.qmd, so
+# `make readme-check` checks its example explicitly instead of letting `ruff format .` edit it
+extend-exclude = [ ".claude", "README.md" ]
 
 [tool.ruff.lint]
 # pycodestyle, pyflakes, isort, pyupgrade, bugbear and pydocstyle
