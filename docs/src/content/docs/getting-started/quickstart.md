@@ -83,5 +83,16 @@ experiment: every step accelerates the charged species before colliding them, an
 `history.mean_velocity` holds the drift velocities. `max_markers=N` merges a species back to
 $N/2$ markers whenever ionization grows it beyond $N$.
 
+More options of the reactor:
+
+- `magnetic_field=(Bx, By, Bz)` (T) adds a Boris push, and `electric_field` may be a function of
+  time (for example an RF field).
+- `charged=plasmacoll.ChargedCollisions(...)` adds Coulomb collisions and charged–charged
+  reactions.
+- `evolve_backgrounds=True` lets the gas heat, flow and be depleted by what the collisions give it.
+- `reactor.energy_distribution("e")` returns the energy distribution function, and
+  `history.rate_coefficient(process, species, partner)` and `history.townsend_coefficient(...)`
+  turn the collision counts into rate and Townsend coefficients.
+
 Next: [the null-collision method](/plasmacoll/guides/null-collision-method/), or the
 [tutorials](/plasmacoll/tutorials/).

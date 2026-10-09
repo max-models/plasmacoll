@@ -47,6 +47,17 @@ The bound must hold. If a candidate's real total frequency exceeds $\nu_{\max}$,
 is underestimated. The operator counts such candidates in `MCCDiagnostics.bound_violations` and
 warns once.
 
+## Speed classes
+
+One bound for a whole species is set by its fastest marker, so a single hot electron would make
+every slow electron draw null collisions at the hot one's rate. The operator therefore sorts the
+markers into `num_speed_classes` classes (default 8), each a factor of two slower than the one
+before, and bounds each class at its own fastest speed. A marker of class $k$ is a candidate with
+probability $P_0\,\nu_k/\nu_0$, where $P_0 = 1 - e^{-\nu_0\Delta t}$ belongs to the fastest class.
+Every marker then collides with probability $P_0\,\nu/\nu_0$, exactly as with a single bound, so the
+statistics, including detailed balance at finite $\Delta t$, are unchanged; only the number of null
+candidates drops. `num_speed_classes=1` restores the single bound.
+
 ## Density profiles and thinning
 
 A background with a profile has density $n_b\,f(\mathbf x)$. The bound uses the largest
@@ -69,6 +80,21 @@ marker speed plus the flow speed plus eight of the largest thermal speeds.
 A background is fixed during a step. To follow gas heating or depletion, build the new
 background between steps and pass it to `MonteCarloCollisions.set_background`, which
 retabulates the bound.
+
+## Coupling to the gas
+
+Every collision's balance is closed by the gas. `MCCDiagnostics.transfer` holds, per background,
+the momentum and kinetic energy the gas received (what the incident particle brought, minus what
+leaves as tracked markers and as internal energy such as excitation or ionization) and the gas
+particles consumed (ionized, attached, dissociated, charge-transferred). Plasma plus gas therefore
+conserve momentum and energy exactly, whatever a process's kinematics conserve on its own.
+Untracked products (fast neutrals, fragments) return their momentum and energy to the gas.
+
+`collide(..., record_events=True)` also returns the transfer of every collision with its position
+(`MCCDiagnostics.events`), to deposit on a grid as source terms for a fluid neutral model.
+`ZeroDReactor(..., evolve_backgrounds=True)` closes the loop in 0D: after every step it updates
+the gas's density, flow and temperature from the particles, momentum and energy it received and
+replaces it with `set_background`.
 
 ## Choosing the time step
 

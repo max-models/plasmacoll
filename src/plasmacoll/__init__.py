@@ -4,9 +4,10 @@ plasmacoll collides markers (positions, velocities and weights in NumPy or CuPy
 arrays, through :mod:`cunumpy`) with prescribed Maxwellian neutral backgrounds:
 elastic and backscatter collisions, excitation, ionization, attachment,
 detachment, charge transfer and dissociation, with cross sections from tables,
-LXCat files or functions. It is the collision step of a particle-in-cell code,
-or with :class:`ZeroDReactor` a homogeneous reactor (optionally in an electric
-field) for testing cross-section sets.
+LXCat files, fits or functions. :class:`ChargedCollisions` adds Coulomb
+collisions and reactions between charged particles. It is the collision step of
+a particle-in-cell code, or with :class:`ZeroDReactor` a homogeneous reactor
+(optionally in electric and magnetic fields) for testing cross-section sets.
 
 Example:
     >>> import plasmacoll
@@ -26,6 +27,12 @@ from plasmacoll.background import (
     NeutralBackground,
     Profile,
 )
+from plasmacoll.charged import (
+    ChargedCollisions,
+    ChargedDiagnostics,
+    ChargedReaction,
+    coulomb_logarithm,
+)
 from plasmacoll.cross_sections import (
     CrossSection,
     LXCatProcess,
@@ -33,13 +40,20 @@ from plasmacoll.cross_sections import (
     find_lxcat_process,
     read_lxcat,
 )
+from plasmacoll.fits import (
+    cross_section_from_log_polynomial,
+    double_log_polynomial,
+    log_polynomial,
+)
 from plasmacoll.hydrogen import proton_hydrogen_processes
 from plasmacoll.markers import MarkerSet, ParticleArrays
 from plasmacoll.mcc import (
+    BackgroundTransfer,
     MCCDiagnostics,
     MCCResult,
     MonteCarloCollisions,
     NewMarkers,
+    TransferEvents,
     make_rng,
     scattering_cosine,
 )
@@ -55,6 +69,10 @@ from plasmacoll.vibrational import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "BackgroundTransfer",
+    "ChargedCollisions",
+    "ChargedDiagnostics",
+    "ChargedReaction",
     "CollisionProcess",
     "CrossSection",
     "DensityProfile",
@@ -70,12 +88,17 @@ __all__ = [
     "Profile",
     "ReactorHistory",
     "ReactorState",
+    "TransferEvents",
     "VibrationalDistribution",
     "ZeroDReactor",
     "boltzmann_level_populations",
+    "coulomb_logarithm",
+    "cross_section_from_log_polynomial",
+    "double_log_polynomial",
     "elastic_from_lxcat",
     "estimate_electronegativity",
     "find_lxcat_process",
+    "log_polynomial",
     "make_rng",
     "merge_markers",
     "proton_hydrogen_processes",

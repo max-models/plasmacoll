@@ -2,7 +2,7 @@
 title: Negative-ion sources
 description: Proton transport in hydrogen and the vibrational population behind H⁻ volume production.
 sidebar:
-  order: 5
+  order: 6
 ---
 
 ## Protons in hydrogen
@@ -24,6 +24,18 @@ The function supplies the process definitions, not the cross sections. The model
 Krstić and Schultz for H⁺ + H₂ and Janev et al. for H⁺ + H (see also AMJUEL/HYDHEL). The
 rotational (0.0453 eV) and vibrational (0.516 eV) thresholds replace those of the tables. With
 `h2_ion="H2+"` the charge exchange with H₂ creates H₂⁺ ions. Otherwise it only removes the proton.
+
+The fit formulas of AMJUEL/HYDHEL and of Janev's compilations can be evaluated with
+`plasmacoll.cross_section_from_log_polynomial` and `log_polynomial`; copy the coefficients and
+ranges of validity from the source. See [cross sections](/plasmacoll/guides/cross-sections/#fits).
+
+## H⁻ losses between charged particles
+
+Mutual neutralization with positive ions, $\mathrm{H^-} + \mathrm{H^+} \to 2\mathrm{H}$, and
+detachment by electrons, $e + \mathrm{H^-} \to \mathrm{H} + 2e$, are collisions between charged
+particles. `ChargedReaction("mutual_neutralization", ("H-", "H+"), ...)` and
+`ChargedReaction("electron_detachment", ("e", "H-"), ...)` add them, with a rate coefficient or a
+cross section from the literature. See [charged-particle collisions](/plasmacoll/guides/charged-collisions/).
 
 ## Vibrationally excited H₂
 

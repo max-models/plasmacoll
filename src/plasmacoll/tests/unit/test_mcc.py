@@ -73,14 +73,24 @@ def test_collision_probability_matches_null_collision_rate() -> None:
     )
 
 
-def test_null_collisions_reject_in_proportion_to_frequency() -> None:
-    """With a two-level cross section, slow markers collide less often."""
+@pytest.mark.parametrize("num_speed_classes", [1, 8])
+def test_null_collisions_reject_in_proportion_to_frequency(
+    num_speed_classes: int,
+) -> None:
+    """With a two-level cross section, slow markers collide less often.
+
+    Speed classes change how many null collisions slow markers draw, not the
+    probability of a real collision, so both settings give the same rates.
+    """
     table = CrossSection(
         energy=[0.0, 5.0, 5.0 + 1e-9, 100.0], sigma=[1.0e-20, 1.0e-20, 4.0e-20, 4.0e-20]
     )
     density = 1.0e24
     mcc = operator(
-        [CollisionProcess("elastic", "gas", table)], {"e": M_E}, density=density
+        [CollisionProcess("elastic", "gas", table)],
+        {"e": M_E},
+        density=density,
+        num_speed_classes=num_speed_classes,
     )
     num = 100_000
     slow_speed, fast_speed = speed_for(1.0, M_E), speed_for(16.0, M_E)
@@ -99,6 +109,15 @@ def test_null_collisions_reject_in_proportion_to_frequency() -> None:
     probability = 1.0 - math.exp(-nu_max * dt)
     expected_slow = probability * density * 1.0e-20 * slow_speed / nu_max
     expected_fast = probability * density * 4.0e-20 * fast_speed / nu_max
+    # The slow markers (4x slower) are in speed class 2 and draw fewer candidates.
+    slow_candidates = (
+        1.0
+        if num_speed_classes == 1
+        else mcc.frequency_bound("e", fast_speed / 4) / nu_max
+    )
+    assert result.diagnostics.candidates == pytest.approx(
+        num * probability * (1.0 + slow_candidates), rel=0.02
+    )
     for rate, expected in ((slow_rate, expected_slow), (fast_rate, expected_fast)):
         tolerance = 5.0 * math.sqrt(expected * (1.0 - expected) / num)
         assert rate == pytest.approx(expected, abs=tolerance)

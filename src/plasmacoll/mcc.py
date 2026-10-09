@@ -58,6 +58,7 @@ outside the scope of this operator: the targets are always neutral gases.
 
 from __future__ import annotations
 
+import math
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -73,10 +74,12 @@ from plasmacoll.markers import MarkerSet
 from plasmacoll.process import CollisionProcess
 
 __all__ = [
+    "BackgroundTransfer",
     "MCCDiagnostics",
     "MCCResult",
     "MonteCarloCollisions",
     "NewMarkers",
+    "TransferEvents",
     "make_rng",
     "scattering_cosine",
 ]
@@ -94,25 +97,81 @@ class NewMarkers(NamedTuple):
 
 
 @dataclass
+class BackgroundTransfer:
+    """What collisions gave to one neutral background in one step (physical, not per marker).
+
+    The transfer closes the balance of every collision: what the incident
+    particle brought minus what leaves as tracked markers (the incident and its
+    products) and as internal energy (excitation, ionization, binding). The
+    plasma and the gas together therefore conserve momentum and energy
+    exactly, whatever a process's kinematics conserve on their own. Untracked
+    products (fast neutrals, fragments) return their momentum and energy to
+    the gas, but not their particles, which may be of another species.
+
+    Attributes:
+        momentum: Momentum gained by the gas, kg m/s, shape ``(3,)``.
+        energy: Kinetic energy gained by the gas in J (negative for cooling).
+        particles: Gas particles consumed (ionized, attached, dissociated,
+            charge-transferred, or turned into a tracked fast neutral).
+    """
+
+    momentum: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    energy: float = 0.0
+    particles: float = 0.0
+
+    def add(self, other: BackgroundTransfer) -> None:
+        """Accumulate ``other`` into this transfer."""
+        self.momentum = self.momentum + other.momentum
+        self.energy += other.energy
+        self.particles += other.particles
+
+
+class TransferEvents(NamedTuple):
+    """The transfer of every collision with one background, for deposition on a grid.
+
+    Attributes:
+        positions: Where the collisions happened, shape ``(K, ndim)``.
+        momentum: Momentum given to the gas per collision, shape ``(K, 3)``.
+        energy: Kinetic energy given to the gas per collision in J, shape ``(K,)``.
+        particles: Gas particles consumed per collision, shape ``(K,)``.
+    """
+
+    positions: Array
+    momentum: Array
+    energy: Array
+    particles: Array
+
+
+@dataclass
 class MCCDiagnostics:
     """Collision counters for one species and one time step.
 
     Attributes:
         candidates: Markers that drew a (real or null) collision.
         null_collisions: Candidates that drew the null collision.
-        counts: Real collisions per process name.
-        bound_violations: Candidates whose real frequency exceeded ``nu_max``,
-            which should be zero; otherwise the collision rate is too low.
-        collision_probability: ``1 - exp(-nu_max dt)``, the probability of a
-            (real or null) collision per marker and step; it must be small,
-            as a marker collides at most once per step.
+        counts: Real collisions per process name (markers).
+        weighted_counts: Real collisions per process name, weighted by the
+            marker weights (physical collisions).
+        bound_violations: Candidates whose real frequency exceeded their
+            ``nu_max``, which should be zero; otherwise the collision rate is
+            too low.
+        collision_probability: ``1 - exp(-nu_max dt)`` of the fastest speed
+            class, the largest probability of a (real or null) collision per
+            marker and step; it must be small, as a marker collides at most
+            once per step.
+        transfer: Momentum, energy and particles given to each background.
+        events: With ``record_events``, the transfer of every collision per
+            background, for deposition on a grid.
     """
 
     candidates: int = 0
     null_collisions: int = 0
     counts: dict[str, int] = field(default_factory=dict)
+    weighted_counts: dict[str, float] = field(default_factory=dict)
     bound_violations: int = 0
     collision_probability: float = 0.0
+    transfer: dict[str, BackgroundTransfer] = field(default_factory=dict)
+    events: dict[str, list[TransferEvents]] = field(default_factory=dict)
 
     @property
     def real_collisions(self) -> int:
@@ -222,6 +281,31 @@ def _rotate(directions: Array, cos_chi: Array, phi: Array) -> Array:
     )
 
 
+#: Kinds that use up their neutral partner (it becomes an ion, a negative ion
+#: or fragments).
+_CONSUMING_KINDS = (
+    "ionization",
+    "dissociative_ionization",
+    "attachment",
+    "dissociative_attachment",
+    "dissociation",
+    "charge_transfer",
+)
+
+
+def _consumes_gas_particle(process: CollisionProcess) -> float:
+    """Return 1 if a collision removes a particle from the background, else 0.
+
+    Resonant charge exchange (``backscatter``) returns the fast neutral to the
+    gas unless it is tracked as a ``neutral`` product.
+    """
+    if process.kind in _CONSUMING_KINDS:
+        return 1.0
+    if process.kind == "backscatter" and "neutral" in process.products:
+        return 1.0
+    return 0.0
+
+
 def _unit(vectors: Array, norms: Array) -> Array:
     """Return ``vectors / norms``, or the z axis where the norm is zero."""
     zero = norms <= 0.0
@@ -250,6 +334,11 @@ class MonteCarloCollisions:
         max_collision_probability: Warn (once) when the collision probability
             per step ``1 - exp(-nu_max dt)`` exceeds this, because markers that
             would collide more than once per step then lose collisions.
+        num_speed_classes: Markers are sorted into this many classes by speed,
+            each a factor of two slower than the one before, and each class
+            uses the bound of its own fastest speed, so that slow markers do
+            not draw (null) collisions at the rate of the fastest. 1 uses one
+            bound for all.
 
     Raises:
         KeyError: If a species, background or product has no definition.
@@ -266,6 +355,7 @@ class MonteCarloCollisions:
         num_bound_samples: int = 4096,
         bound_safety: float = 1.02,
         max_collision_probability: float = 0.1,
+        num_speed_classes: int = 8,
     ) -> None:
         """Check the definitions and tabulate the collision-frequency bounds."""
         self._masses = {name: float(mass) for name, mass in species_masses.items()}
@@ -295,6 +385,9 @@ class MonteCarloCollisions:
             raise ValueError("bound_safety must be >= 1")
         if not 0.0 < max_collision_probability <= 1.0:
             raise ValueError("max_collision_probability must be in (0, 1]")
+        if num_speed_classes < 1:
+            raise ValueError("num_speed_classes must be >= 1")
+        self._num_speed_classes = int(num_speed_classes)
         self._rng = make_rng(seed, rank) if rng is None else rng
         self._num_bound_samples = int(num_bound_samples)
         self._bound_safety = float(bound_safety)
@@ -441,12 +534,16 @@ class MonteCarloCollisions:
         created: dict[str, list[NewMarkers]],
         relative: Array,
         speed: Array,
-    ) -> None:
+    ) -> tuple[Array, Array]:
         """Apply the kinematics of one process to the selected markers.
 
         ``relative`` (incident - neutral) and ``speed`` (its norm) are already
         known from candidate selection, so they are passed in rather than
         recomputed.
+
+        Returns:
+            The momentum (kg m/s, shape ``(num, 3)``) and kinetic energy (J)
+            per collision carried away by the tracked products.
         """
         num = int(marker_indices.shape[0])
         mass = self._masses[species]
@@ -461,7 +558,16 @@ class MonteCarloCollisions:
         incident_direction = _unit(relative, speed)
         kind = process.kind
 
+        product_momentum = xp.zeros((num, 3))
+        product_energy = xp.zeros(num)
+
         def add_product(role: str, product_velocities: Array) -> None:
+            nonlocal product_momentum, product_energy
+            product_mass = self._masses[process.products[role]]
+            product_momentum = product_momentum + product_mass * product_velocities
+            product_energy = product_energy + 0.5 * product_mass * xp.sum(
+                product_velocities**2, axis=1
+            )
             created.setdefault(process.products[role], []).append(
                 NewMarkers(
                     xp.array(positions[marker_indices], copy=True),
@@ -544,6 +650,7 @@ class MonteCarloCollisions:
                 center_of_mass
                 + electron_speed[:, None] * _isotropic_directions(self._rng, num),
             )
+        return product_momentum, product_energy
 
     def _secondary_fraction(self, process: CollisionProcess, residual: Array) -> Array:
         """Return the fraction of the residual energy (J) the secondary electron gets."""
@@ -638,29 +745,83 @@ class MonteCarloCollisions:
     # ------------------------------------------------------------------ #
     def _select_candidates(
         self,
-        num_markers: int,
-        probability: float,
+        species: str,
+        velocities: Array,
+        max_neutral_speed: float,
+        dt: float,
         alive: Array | None,
-    ) -> Array:
-        """Return the sorted indices of the markers that may collide this step.
+    ) -> tuple[Array, Array | float, float] | None:
+        """Return the candidates of this step, their bounds and the top probability.
 
-        Each marker is a candidate independently with ``probability``. That is
-        the same as drawing how many are candidates (binomial) and then which
-        ones (a uniform subset), which costs O(candidates) instead of one
-        random number per marker on NumPy. Other generators (CuPy) draw one
-        number per marker.
+        Markers are sorted into speed classes: class ``k`` holds the speeds in
+        ``(v_max / 2^(k+1), v_max / 2^k]``, the last class everything slower.
+        Each class uses the bound ``nu_k`` at its fastest relative speed, and a
+        marker is a candidate with probability ``P_0 nu_k / nu_0``, where
+        ``P_0 = 1 - exp(-nu_0 dt)`` is that of the fastest class. A marker then
+        collides with probability ``P_0 nu / nu_0`` whatever its class, exactly
+        as with a single bound (the same factor for every marker, which keeps
+        detailed balance at finite ``dt``), but slow markers draw fewer null
+        collisions. With one
+        class on NumPy, the number of candidates is drawn (binomial) and then
+        which ones (a uniform subset), which costs O(candidates) instead of one
+        random number per marker.
+
+        Returns:
+            The sorted candidate indices, the bound of each candidate (one
+            float with one class) and the collision probability of the fastest
+            class; None if no marker can collide.
         """
-        if isinstance(self._rng, np.random.Generator):
-            count = int(self._rng.binomial(num_markers, probability))
-            candidates = self._rng.choice(num_markers, size=count, replace=False)
-            candidates.sort()
+        num_markers = int(velocities.shape[0])
+        if self._num_speed_classes == 1:
+            max_speed = math.sqrt(_max_squared_speed(velocities))
+            nu_max = self.frequency_bound(species, max_speed + max_neutral_speed)
+            if nu_max <= 0.0:
+                return None
+            probability = 1.0 - math.exp(-nu_max * dt)
+            if isinstance(self._rng, np.random.Generator):
+                count = int(self._rng.binomial(num_markers, probability))
+                candidates = self._rng.choice(num_markers, size=count, replace=False)
+                candidates.sort()
+                if alive is not None:
+                    candidates = candidates[np.asarray(alive, dtype=bool)[candidates]]
+                return xp.asarray(candidates), nu_max, probability
+            mask = self._rng.random(num_markers) < probability
             if alive is not None:
-                candidates = candidates[np.asarray(alive, dtype=bool)[candidates]]
-            return candidates
-        candidate_mask = self._rng.random(num_markers) < probability
+                mask &= xp.asarray(alive, dtype=bool)
+            return xp.where(mask)[0], nu_max, probability
+
+        squared = xp.sum(velocities**2, axis=1)
+        max_speed = math.sqrt(float(xp.max(squared)))
+        num_classes = self._num_speed_classes
+        upper = max_speed * 0.5 ** np.arange(num_classes)
+        bounds = np.asarray(
+            [
+                self.frequency_bound(species, speed + max_neutral_speed)
+                for speed in upper
+            ]
+        )
+        if bounds[0] <= 0.0:
+            return None
+        probabilities = bounds * (-math.expm1(-bounds[0] * dt) / bounds[0])
+        # The class of each marker: floor(log2(v_max / v)), markers at rest last.
+        if max_speed > 0.0:
+            ratio = max_speed**2 / xp.where(
+                squared > 0.0, squared, max_speed**2 * 4.0**num_classes
+            )
+            speed_class = xp.clip(
+                xp.floor(0.5 * xp.log2(xp.clip(ratio, 1.0, None))), 0, num_classes - 1
+            ).astype(int)
+        else:
+            speed_class = xp.zeros(num_markers, dtype=int)
+        mask = self._rng.random(num_markers) < xp.asarray(probabilities)[speed_class]
         if alive is not None:
-            candidate_mask &= xp.asarray(alive, dtype=bool)
-        return xp.where(candidate_mask)[0]
+            mask &= xp.asarray(alive, dtype=bool)
+        candidates = xp.where(mask)[0]
+        return (
+            candidates,
+            xp.asarray(bounds)[speed_class[candidates]],
+            float(probabilities[0]),
+        )
 
     def collide(
         self,
@@ -671,6 +832,7 @@ class MonteCarloCollisions:
         dt: float,
         alive: Array | None = None,
         in_place: bool = False,
+        record_events: bool = False,
     ) -> MCCResult:
         """Collide one species' markers for one time step ``dt`` (s).
 
@@ -686,6 +848,8 @@ class MonteCarloCollisions:
             in_place: Update the collided rows of ``velocities`` directly,
                 which avoids copying the marker storage; otherwise the result
                 holds a new array.
+            record_events: Also return the transfer to the gas of every
+                collision with its position, in ``diagnostics.events``.
 
         Returns:
             The new velocities, the removed markers, the created markers per
@@ -699,8 +863,11 @@ class MonteCarloCollisions:
         num_markers = int(velocities.shape[0])
         removed = xp.zeros(num_markers, dtype=bool)
         created: dict[str, list[NewMarkers]] = {}
-        diagnostics = MCCDiagnostics()
         processes = self._processes.get(species, ())
+        diagnostics = MCCDiagnostics(
+            counts={process.name: 0 for process in processes},
+            weighted_counts={process.name: 0.0 for process in processes},
+        )
         if num_markers == 0 or dt <= 0.0 or not processes:
             return MCCResult(velocities, removed, created, diagnostics)
         if velocities.ndim != 2 or velocities.shape[1] != 3:
@@ -709,35 +876,34 @@ class MonteCarloCollisions:
                 f"got shape {tuple(velocities.shape)}"
             )
 
-        # Dead rows only raise the bound, which keeps it valid.
-        max_speed = float(np.sqrt(_max_squared_speed(velocities)))
         # The fastest neutral partner: flow plus eight thermal speeds.
         max_neutral_speed = max(
             self._backgrounds[p.background].drift_speed
             + 8.0 * self._backgrounds[p.background].max_thermal_speed
             for p in processes
         )
-        nu_max = self.frequency_bound(species, max_speed + max_neutral_speed)
-        if nu_max <= 0.0:
+        # Dead rows only raise the bounds, which keeps them valid.
+        selected = self._select_candidates(
+            species, velocities, max_neutral_speed, dt, alive
+        )
+        if selected is None:
             return MCCResult(velocities, removed, created, diagnostics)
-
-        probability = 1.0 - float(np.exp(-nu_max * dt))
+        candidates, candidate_bound, probability = selected
         diagnostics.collision_probability = probability
         if probability > self._max_probability and not self._warned_probability:
+            nu_dt = -math.log1p(-min(probability, 1.0 - 1e-16))
             warnings.warn(
                 f"{species} collision probability per step {probability:.3g} exceeds "
-                f"{self._max_probability:.3g} (nu_max dt = {nu_max * dt:.3g}); markers "
+                f"{self._max_probability:.3g} (nu_max dt = {nu_dt:.3g}); markers "
                 "collide at most once per step, so collisions are lost. Reduce dt.",
                 RuntimeWarning,
                 stacklevel=2,
             )
             self._warned_probability = True
-        candidates = self._select_candidates(num_markers, probability, alive)
         num_candidates = int(candidates.shape[0])
         diagnostics.candidates = num_candidates
         if num_candidates == 0:
             return MCCResult(velocities, removed, created, diagnostics)
-        candidates = xp.asarray(candidates)
 
         incident = velocities[candidates]
 
@@ -771,7 +937,7 @@ class MonteCarloCollisions:
         speed_stack = xp.sqrt(xp.sum(relative_stack**2, axis=-1))
 
         cumulative = xp.zeros(num_candidates)
-        selection = self._rng.random(num_candidates) * nu_max
+        selection = self._rng.random(num_candidates) * candidate_bound
         chosen = xp.full(num_candidates, -1, dtype=int)
         for index, process in enumerate(processes):
             cumulative = cumulative + self.process_frequency(
@@ -781,7 +947,7 @@ class MonteCarloCollisions:
                 density_factors[process_background[index]],
             )
             chosen = xp.where((chosen < 0) & (selection < cumulative), index, chosen)
-        violations = int(xp.count_nonzero(cumulative > nu_max * (1.0 + 1e-9)))
+        violations = int(xp.count_nonzero(cumulative > candidate_bound * (1.0 + 1e-9)))
         diagnostics.bound_violations = violations
         if violations and not self._warned_bound:
             warnings.warn(
@@ -793,15 +959,18 @@ class MonteCarloCollisions:
             self._warned_bound = True
 
         diagnostics.null_collisions = int(xp.count_nonzero(chosen < 0))
+        mass = self._masses[species]
         for index, process in enumerate(processes):
             local = xp.where(chosen == index)[0]
             diagnostics.counts[process.name] = int(local.shape[0])
             if local.shape[0] == 0:
                 continue
-            self._collide_process(
+            marker_indices = candidates[local]
+            before = incident[local]
+            product_momentum, product_energy = self._collide_process(
                 species=species,
                 process=process,
-                marker_indices=candidates[local],
+                marker_indices=marker_indices,
                 positions=positions,
                 velocities=velocities,
                 weights=weights,
@@ -811,12 +980,48 @@ class MonteCarloCollisions:
                 relative=relative_stack[index][local],
                 speed=speed_stack[index][local],
             )
+            marker_weights = weights[marker_indices]
+            diagnostics.weighted_counts[process.name] = float(xp.sum(marker_weights))
+            # What the incident brought minus what leaves as tracked markers and
+            # internal energy goes to the gas (see BackgroundTransfer).
+            survives = ~removed[marker_indices]
+            after = velocities[marker_indices] * survives[:, None]
+            momentum = mass * (before - after) - product_momentum
+            energy = (
+                0.5 * mass * (xp.sum(before**2, axis=1) - xp.sum(after**2, axis=1))
+                - product_energy
+                - process.loss * ELEMENTARY_CHARGE
+            )
+            consumed = _consumes_gas_particle(process)
+            momentum = momentum * marker_weights[:, None]
+            energy = energy * marker_weights
+            particles = marker_weights * consumed
+            total = diagnostics.transfer.setdefault(
+                process.background, BackgroundTransfer()
+            )
+            total.add(
+                BackgroundTransfer(
+                    momentum=np.asarray(xp.to_numpy(xp.sum(momentum, axis=0))),
+                    energy=float(xp.sum(energy)),
+                    particles=float(xp.sum(marker_weights)) * consumed,
+                )
+            )
+            if record_events:
+                diagnostics.events.setdefault(process.background, []).append(
+                    TransferEvents(
+                        xp.array(positions[marker_indices], copy=True),
+                        momentum,
+                        energy,
+                        particles,
+                    )
+                )
         return MCCResult(velocities, removed, created, diagnostics)
 
     def collide_species(
         self,
         species: Mapping[str, MarkerSet],
         dt: float,
+        record_events: bool = False,
     ) -> dict[str, MCCDiagnostics]:
         """Collide every species in ``species`` for one time step ``dt`` (s), in place.
 
@@ -830,6 +1035,8 @@ class MonteCarloCollisions:
                 :class:`~plasmacoll.markers.ParticleArrays`. Species without
                 processes are only receivers of products.
             dt: The time step in s.
+            record_events: Also return the transfer to the gas of every
+                collision, see :meth:`collide`.
 
         Returns:
             The collision counters of every species that has processes.
@@ -851,6 +1058,7 @@ class MonteCarloCollisions:
                 dt=dt,
                 alive=getattr(markers, "alive", None),
                 in_place=True,
+                record_events=record_events,
             )
             if bool(xp.any(result.removed)):
                 markers.remove(result.removed)

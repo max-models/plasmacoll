@@ -12,9 +12,10 @@ analysis](https://github.com/max-models/plasmacoll/actions/workflows/static_anal
 [![Python](https://img.shields.io/pypi/pyversions/plasmacoll.png)](https://pypi.org/project/plasmacoll/)
 
 Null-collision Monte Carlo collisions (MCC) of charged particles with
-neutral gases, on NumPy or CuPy arrays. It is the collision step of a
-particle-in-cell code, or with `ZeroDReactor` a homogeneous reactor,
-optionally in an electric field, for testing cross-section sets.
+neutral gases, and binary collisions between charged particles, on NumPy
+or CuPy arrays. It is the collision step of a particle-in-cell code, or
+with `ZeroDReactor` a homogeneous reactor in electric and magnetic
+fields for testing cross-section sets.
 
 - **Processes:** elastic, backscatter (resonant charge exchange),
   excitation, ionization (electron and ion impact), attachment,
@@ -22,24 +23,33 @@ optionally in an electric field, for testing cross-section sets.
   dissociative ionization. Isotropic or forward-peaked (Vahedi–Surendra,
   Okhrimovskyy) scattering, and equal, uniform or Opal–Peterson–Beaty
   energy sharing. Fast neutrals and fragments can be tracked as species.
+- **Charged particles:** Takizuka–Abe Coulomb collisions, and mutual
+  neutralization, recombination and electron detachment, paired within
+  cells.
 - **Neutral gases:** drifting Maxwellians with density and temperature
-  profiles, replaceable between steps for gas heating or depletion.
+  profiles. Every collision reports the momentum, energy and particles
+  it gave the gas, so plasma and gas together conserve them exactly, and
+  the 0D reactor can heat and deplete its gas.
 - **Cross sections:** from text tables, LXCat files (with `EFFECTIVE`
-  sets converted to elastic) or functions. Also Maxwell molecules for
-  benchmarks, and population-weighted mixtures of level-resolved tables,
-  e.g. H₂(v) dissociative attachment.
+  sets converted to elastic), AMJUEL/HYDHEL-style log-polynomial fits or
+  functions. Also Maxwell molecules for benchmarks, and
+  population-weighted mixtures of level-resolved tables, e.g. H₂(v)
+  dissociative attachment.
 - **Plain arrays:** markers are positions, velocities and weights. Any
   particle container with those plugs in, and
   [cunumpy](https://pypi.org/project/cunumpy/) runs the same code on CPU
-  (NumPy) or GPU (CuPy). Markers can be merged and split, conserving
-  weight, momentum and energy.
+  (NumPy) or GPU (CuPy). Speed classes keep slow markers from drawing
+  null collisions at the rate of the fastest. Markers can be merged and
+  split, conserving weight, momentum and energy.
+- **Swarm diagnostics:** drift velocities, energy distributions, and
+  rate and Townsend coefficients from the collision counts of the 0D
+  reactor, with E×B and RF fields.
 - **Validated:** a 0D reactor reproduces the closed-form relaxation,
-  growth and decay rates of Maxwell-molecule gases, and the drift
-  velocity and Wannier energy of a swarm in a field. The tests run on
-  NumPy and on a CuPy stand-in, with 100 % combined coverage.
-
-Collisions between charged particles (Coulomb collisions, recombination)
-are out of scope: the collision partners are always neutral gases.
+  growth and decay rates of Maxwell-molecule gases, the drift velocity
+  and Wannier energy of a swarm in a field, E×B drift, and the rate
+  equations of charged reactions. The tests run on NumPy and on a CuPy
+  stand-in, with 100 % combined coverage. `examples/turner_ccp` sets up
+  the Turner et al. (2013) capacitive-discharge benchmark.
 
 Documentation: <https://max-models.github.io/plasmacoll/>
 

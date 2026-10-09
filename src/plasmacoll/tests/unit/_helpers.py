@@ -52,6 +52,7 @@ def operator(
     incident: str = "e",
     bound_safety: float = 1.0,
     seed: int = 1234,
+    **options,
 ) -> MonteCarloCollisions:
     return MonteCarloCollisions(
         species_masses=masses,
@@ -59,4 +60,5 @@ def operator(
         processes={incident: processes},
         seed=seed,
         bound_safety=bound_safety,
+        **options,
     )

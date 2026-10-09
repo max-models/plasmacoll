@@ -54,6 +54,21 @@ The momentum-transfer cross section belongs with isotropic scattering. With an a
 [scattering model](/plasmacoll/guides/collision-processes/#scattering-models), use the integral elastic
 cross section instead.
 
+## Fits
+
+The hydrogen and helium compilations of Janev and collaborators and the EIRENE databases AMJUEL
+and HYDHEL give data as polynomials in logarithms. `plasmacoll.fits` evaluates the forms:
+
+| Function                                       | Form                                                      |
+| ---------------------------------------------- | --------------------------------------------------------- |
+| `log_polynomial(b, x, unit)`                   | H.1/H.2: $\ln y = \sum_n b_n (\ln x)^n$                   |
+| `double_log_polynomial(a, E, T, unit)`         | H.3: $\ln y = \sum_{nm} a_{nm} (\ln E)^n (\ln T)^m$         |
+| `cross_section_from_log_polynomial(b, (E0, E1))` | an H.1 cross section tabulated on its range of validity |
+
+The fits give cm² and cm³/s; pass `unit=CM2` or `unit=CM3_PER_S` (from `plasmacoll.fits`) for SI
+values. plasmacoll ships no coefficients: copy them from the source together with the fit's range
+of validity, outside of which a polynomial in logarithms quickly becomes meaningless.
+
 ## Data
 
 plasmacoll does not ship cross-section data. Download sets from [LXCat](https://lxcat.net) and cite

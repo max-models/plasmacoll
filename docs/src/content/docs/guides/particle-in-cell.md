@@ -70,6 +70,19 @@ weight, momentum and kinetic energy, and works on any `MarkerSet` through `remov
 The grouping runs on the host, so on GPUs merge rarely rather than every step.
 `split_markers(markers, max_weight)` divides markers that have become too heavy.
 
+## Coupling to a neutral model
+
+Pass `record_events=True` to `collide_species` and every species' `MCCDiagnostics.events` holds,
+per background, the positions of its collisions and the momentum, energy and gas particles each
+transferred. Deposit them with your shape functions to get the momentum, heating and particle
+sources of a fluid or DSMC neutral model. See [the null-collision method](/plasmacoll/guides/null-collision-method/#coupling-to-the-gas).
+
+## Charged-particle collisions
+
+`ChargedCollisions.collide_species(species, dt, cell_volume=dx * area, cell_size=dx)` pairs the
+markers within grid cells for Coulomb scattering and charged–charged reactions. See
+[charged-particle collisions](/plasmacoll/guides/charged-collisions/).
+
 ## MPI
 
 The operator holds no global state. With particle decomposition every rank builds the same
