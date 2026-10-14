@@ -22,10 +22,12 @@ Example:
 
 from plasmacoll.background import (
     DensityProfile,
+    DynamicProfile,
     FunctionProfile,
     NeutralBackground,
     Profile,
 )
+from plasmacoll.charge_states import ChargeStateTransitions, charge_state_fractions
 from plasmacoll.cross_sections import (
     CrossSection,
     LXCatProcess,
@@ -45,6 +47,7 @@ from plasmacoll.mcc import (
 )
 from plasmacoll.population import merge_markers, split_markers
 from plasmacoll.process import CollisionProcess
+from plasmacoll.rates import RateTable, rate_coefficient
 from plasmacoll.reactor import ReactorHistory, ReactorState, ZeroDReactor
 from plasmacoll.vibrational import (
     VibrationalDistribution,
@@ -55,9 +58,11 @@ from plasmacoll.vibrational import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "ChargeStateTransitions",
     "CollisionProcess",
     "CrossSection",
     "DensityProfile",
+    "DynamicProfile",
     "FunctionProfile",
     "LXCatProcess",
     "MCCDiagnostics",
@@ -68,6 +73,7 @@ __all__ = [
     "NewMarkers",
     "ParticleArrays",
     "Profile",
+    "RateTable",
     "ReactorHistory",
     "ReactorState",
     "VibrationalDistribution",
@@ -76,9 +82,11 @@ __all__ = [
     "elastic_from_lxcat",
     "estimate_electronegativity",
     "find_lxcat_process",
+    "charge_state_fractions",
     "make_rng",
     "merge_markers",
     "proton_hydrogen_processes",
+    "rate_coefficient",
     "read_lxcat",
     "scattering_cosine",
     "split_markers",
