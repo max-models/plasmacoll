@@ -7,6 +7,13 @@ the piecewise-linear :class:`DensityProfile` along one axis or a
 :class:`FunctionProfile` of all coordinates. To change a background in time
 (gas heating, depletion), replace it with
 :meth:`~plasmacoll.mcc.MonteCarloCollisions.set_background`.
+
+A :class:`DynamicProfile` changes between collision steps without that: its
+function and its bound are set anew before every step, e.g. from the density of
+a plasma species on a grid, which makes that species a collision target (the
+electrons of ``e + H- -> H + 2e``). The collision operator scales the
+frequency bound of such a background by the current ``max_factor`` instead of
+tabulating it again.
 """
 
 from __future__ import annotations
@@ -21,7 +28,13 @@ import cunumpy as xp
 from plasmacoll._types import Array
 from plasmacoll.constants import BOLTZMANN
 
-__all__ = ["DensityProfile", "FunctionProfile", "NeutralBackground", "Profile"]
+__all__ = [
+    "DensityProfile",
+    "DynamicProfile",
+    "FunctionProfile",
+    "NeutralBackground",
+    "Profile",
+]
 
 
 @runtime_checkable
@@ -109,6 +122,69 @@ class FunctionProfile:
     def __call__(self, positions: Array) -> Array:
         """Return the factor at marker ``positions`` (shape ``(N, ndim)``)."""
         return xp.asarray(self.function(positions), dtype=float)
+
+
+class DynamicProfile:
+    """A factor that is set anew before every collision step.
+
+    ``function`` takes the marker positions, shape ``(N, ndim)``, and returns
+    ``N`` factors (>= 0) up to ``max_factor``. :meth:`update` replaces either,
+    e.g. with the interpolated density of a plasma species and its largest
+    value on the grid. The collision operator reads ``max_factor`` when it
+    collides, so a background with this profile needs no
+    :meth:`~plasmacoll.mcc.MonteCarloCollisions.set_background`; until the
+    first update the factor is zero and nothing collides with it.
+
+    Args:
+        function: The factor at the given positions; zero everywhere if None.
+        max_factor: The largest factor ``function`` returns.
+    """
+
+    #: Marks the profile for the collision operator, which keeps its bound apart.
+    dynamic = True
+
+    def __init__(
+        self,
+        function: Callable[[Array], Array] | None = None,
+        max_factor: float = 0.0,
+    ) -> None:
+        """Start with ``function`` and its bound ``max_factor``."""
+        self._function = function
+        self._max_factor = 0.0
+        self.update(function, max_factor)
+
+    def update(
+        self,
+        function: Callable[[Array], Array] | None = None,
+        max_factor: float | None = None,
+    ) -> None:
+        """Replace the function and/or the bound (None keeps the current one)."""
+        if function is not None:
+            self._function = function
+        if max_factor is not None:
+            if max_factor < 0.0 or not math.isfinite(max_factor):
+                raise ValueError("max_factor must be finite and >= 0")
+            self._max_factor = float(max_factor)
+
+    @property
+    def max_factor(self) -> float:
+        """Return the current bound of the factor."""
+        return self._max_factor
+
+    def __call__(self, positions: Array) -> Array:
+        """Return the factor at marker ``positions`` (shape ``(N, ndim)``)."""
+        if self._function is None:
+            return xp.zeros(positions.shape[0])
+        return xp.asarray(self._function(positions), dtype=float)
+
+    def __repr__(self) -> str:
+        """Show the current bound."""
+        return f"DynamicProfile(max_factor={self._max_factor:g})"
+
+
+def is_dynamic(profile: object) -> bool:
+    """Return whether ``profile`` is set anew between steps (a :class:`DynamicProfile`)."""
+    return bool(getattr(profile, "dynamic", False))
 
 
 @dataclass(frozen=True)

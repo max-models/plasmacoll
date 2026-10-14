@@ -52,14 +52,22 @@ A code with one fixed weight per species must give species that exchange
 particles the same weight; :mod:`plasmacoll.population` splits and merges
 markers to control their number.
 
-Collisions between charged particles (Coulomb collisions, recombination) are
-outside the scope of this operator: the targets are always neutral gases.
+The targets are Maxwellian backgrounds. A background with a
+:class:`~plasmacoll.background.DynamicProfile` follows a density set before
+every step, e.g. that of a tracked plasma species on a grid, which makes that
+species a target in the test-particle sense: ``detachment`` of H- by the
+electrons (``e + H- -> H + 2e``), or mutual neutralization ``H+ + H- -> H + H``
+as two ``charge_transfer`` processes without products, H- on the H+ density
+and H+ on the H- density, which remove both species at the rate
+``n+ n- <sigma v>`` (pairs balance on average, not event by event). The target
+species itself is not changed by the collision. Coulomb collisions are outside
+the scope of this operator.
 """
 
 from __future__ import annotations
 
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
@@ -67,7 +75,7 @@ import cunumpy as xp
 import numpy as np
 
 from plasmacoll._types import Array
-from plasmacoll.background import NeutralBackground
+from plasmacoll.background import NeutralBackground, is_dynamic
 from plasmacoll.constants import ELEMENTARY_CHARGE
 from plasmacoll.markers import MarkerSet
 from plasmacoll.process import CollisionProcess
@@ -152,8 +160,18 @@ def make_rng(seed: int | None = None, rank: int = 0) -> Any:
 
 
 def _max_squared_speed(velocities: Array) -> float:
-    """Return the largest squared speed, without a temporary array on NumPy."""
+    """Return the largest squared speed, without a temporary array on NumPy.
+
+    ``velocities`` may be a transposed view of component-major storage
+    (``storage[:, :n].T``, as a code that stores markers that way hands it
+    over without copying); the sum then runs over the contiguous rows.
+    """
+    if velocities.shape[0] == 0:
+        return 0.0
     if isinstance(velocities, np.ndarray):
+        if not velocities.flags.c_contiguous and velocities.T.flags.c_contiguous:
+            rows = velocities.T
+            return float(np.einsum("ij,ij->j", rows, rows).max())
         return float(np.einsum("ij,ij->i", velocities, velocities).max())
     return float(xp.max(xp.sum(velocities**2, axis=1)))
 
@@ -304,11 +322,32 @@ class MonteCarloCollisions:
         self._warned_probability = False
 
     def _tabulate_bounds(self) -> None:
-        """Tabulate the collision-frequency bound of every species."""
-        self._frequency_tables = {
-            species: self._running_frequency_bound(species)
-            for species in self._processes
-        }
+        """Tabulate the collision-frequency bound of every species.
+
+        The processes on backgrounds with a fixed profile share one table at
+        their largest density. Each background with a
+        :class:`~plasmacoll.background.DynamicProfile` gets a table of its own
+        at the reference density, scaled by the profile's current
+        ``max_factor`` in :meth:`frequency_bound`, so the bound follows the
+        profile without being tabulated again.
+        """
+        self._frequency_tables = {}
+        for species, processes in self._processes.items():
+            static = [p for p in processes if not self._is_dynamic(p.background)]
+            dynamic: dict[str, list[CollisionProcess]] = {}
+            for process in processes:
+                if self._is_dynamic(process.background):
+                    dynamic.setdefault(process.background, []).append(process)
+            self._frequency_tables[species] = (
+                (static, self._running_frequency_bound(species, static, None)),
+                {
+                    name: (group, self._running_frequency_bound(species, group, 1.0))
+                    for name, group in dynamic.items()
+                },
+            )
+
+    def _is_dynamic(self, background: str) -> bool:
+        return is_dynamic(self._backgrounds[background].profile)
 
     def set_background(self, background: NeutralBackground) -> None:
         """Replace the background of the same name, e.g. after gas heating or depletion.
@@ -345,15 +384,20 @@ class MonteCarloCollisions:
             2.0 * energy * ELEMENTARY_CHARGE / self._energy_mass(species, process)
         )
 
-    def _running_frequency_bound(self, species: str) -> tuple[np.ndarray, np.ndarray]:
-        """Tabulate the running maximum of the total frequency over speed.
+    def _running_frequency_bound(
+        self,
+        species: str,
+        processes: Sequence[CollisionProcess],
+        density_factor: float | None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Tabulate the running maximum of the frequency of ``processes`` over speed.
 
         The frequency is evaluated on a dense logarithmic speed grid merged
         with the speeds of every table point and threshold, which resolves the
         local maxima of a piecewise-linear cross section times the speed.
-        Returns host arrays ``(speeds, running_max)``.
+        ``density_factor`` scales the reference densities (None: each
+        background's largest). Returns host arrays ``(speeds, running_max)``.
         """
-        processes = self._processes[species]
         if not processes:
             return np.zeros(1), np.zeros(1)
         cap = max(
@@ -370,8 +414,25 @@ class MonteCarloCollisions:
                 )
                 grids.append(np.asarray([threshold_speed * (1.0 + 1e-12)]))
         speeds = np.unique(np.concatenate(grids))
-        frequencies = xp.to_numpy(self.total_frequency(species, xp.asarray(speeds)))
+        frequencies = xp.to_numpy(
+            self._frequency_of(species, processes, xp.asarray(speeds), density_factor)
+        )
         return speeds, np.maximum.accumulate(frequencies)
+
+    def _frequency_of(
+        self,
+        species: str,
+        processes: Sequence[CollisionProcess],
+        relative_speed: Array,
+        density_factor: float | None,
+    ) -> Array:
+        """The summed frequency of ``processes`` (1/s) at relative speeds ``g``."""
+        total = xp.zeros_like(xp.asarray(relative_speed, dtype=float))
+        for process in processes:
+            total = total + self.process_frequency(
+                species, process, relative_speed, density_factor
+            )
+        return total
 
     def process_frequency(
         self,
@@ -418,11 +479,25 @@ class MonteCarloCollisions:
         """
         if species not in self._frequency_tables:
             return 0.0
-        speeds, running_max = self._frequency_tables[species]
-        index = int(np.searchsorted(speeds, max_relative_speed, side="right")) - 1
-        bound = float(running_max[index]) if index >= 0 else 0.0
         speed = xp.asarray([float(max_relative_speed)])
-        bound = max(bound, float(self.total_frequency(species, speed)[0]))
+
+        def table_bound(processes, table, density_factor):
+            speeds, running_max = table
+            index = int(np.searchsorted(speeds, max_relative_speed, side="right")) - 1
+            tabulated = float(running_max[index]) if index >= 0 else 0.0
+            direct = float(
+                self._frequency_of(species, processes, speed, density_factor)[0]
+            )
+            return max(tabulated, direct)
+
+        (static, table), dynamic = self._frequency_tables[species]
+        bound = table_bound(static, table, None) if static else 0.0
+        # A sum of bounds bounds the sum: each dynamic background at its
+        # current largest factor (the table holds the reference density).
+        for name, (processes, dynamic_table) in dynamic.items():
+            factor = self._backgrounds[name].max_density_factor
+            if factor > 0.0:
+                bound += factor * table_bound(processes, dynamic_table, 1.0)
         return self._bound_safety * bound
 
     # ------------------------------------------------------------------ #
@@ -816,7 +891,8 @@ class MonteCarloCollisions:
     def collide_species(
         self,
         species: Mapping[str, MarkerSet],
-        dt: float,
+        dt: float | Mapping[str, float],
+        incident: Iterable[str] | None = None,
     ) -> dict[str, MCCDiagnostics]:
         """Collide every species in ``species`` for one time step ``dt`` (s), in place.
 
@@ -829,18 +905,22 @@ class MonteCarloCollisions:
             species: Marker sets by species name, e.g.
                 :class:`~plasmacoll.markers.ParticleArrays`. Species without
                 processes are only receivers of products.
-            dt: The time step in s.
+            dt: The time step in s, or one per incident species (e.g. the
+                cycle of a species pushed only every few steps).
+            incident: The species that collide now (all with processes if
+                None); the others in ``species`` only receive products.
 
         Returns:
-            The collision counters of every species that has processes.
+            The collision counters of every species that collided.
 
         Raises:
             KeyError: If a product species is missing from ``species``.
         """
         diagnostics: dict[str, MCCDiagnostics] = {}
         pending: dict[str, list[NewMarkers]] = {}
+        colliding = None if incident is None else set(incident)
         for name in self._processes:
-            if name not in species:
+            if name not in species or (colliding is not None and name not in colliding):
                 continue
             markers = species[name]
             result = self.collide(
@@ -848,7 +928,7 @@ class MonteCarloCollisions:
                 positions=markers.positions,
                 velocities=markers.velocities,
                 weights=markers.weights,
-                dt=dt,
+                dt=dt[name] if isinstance(dt, Mapping) else dt,
                 alive=getattr(markers, "alive", None),
                 in_place=True,
             )
