@@ -43,6 +43,7 @@ def _line(num: int, length: float = 1.0):
 def test_the_profile_starts_empty_and_takes_updates() -> None:
     profile = DynamicProfile()
     assert profile.max_factor == 0.0
+    assert repr(profile) == "DynamicProfile(max_factor=0)"
     assert bool(xp.all(profile(_line(3)) == 0.0))
     profile.update(lambda positions: xp.full(positions.shape[0], 2.0), 2.0)
     assert profile.max_factor == 2.0

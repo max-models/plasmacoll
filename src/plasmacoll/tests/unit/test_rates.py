@@ -81,3 +81,11 @@ def test_bad_inputs_are_refused() -> None:
         rate_coefficient(CrossSection.constant(1e-20), 1.0, 0.0)
     with pytest.raises(ValueError, match="increasing"):
         RateTable(np.array([2.0, 1.0]), np.array([1.0, 1.0]))
+    with pytest.raises(ValueError, match="equal length"):
+        RateTable(np.array([1.0, 2.0]), np.array([1.0]))
+    with pytest.raises(ValueError, match=">= 0"):
+        RateTable(np.array([1.0, 2.0]), np.array([1.0, -1.0]))
+    with pytest.raises(ValueError, match="min_temperature"):
+        RateTable.from_cross_section(
+            CrossSection.constant(1e-20), M_E, min_temperature=2.0, max_temperature=1.0
+        )
