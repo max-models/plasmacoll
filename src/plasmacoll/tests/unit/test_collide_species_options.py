@@ -22,6 +22,11 @@ def test_the_largest_speed_of_a_transposed_view_matches_a_copy() -> None:
     assert _max_squared_speed(view) == pytest.approx(
         _max_squared_speed(np.ascontiguousarray(view))
     )
+    full = storage.T  # the whole storage: the transpose is contiguous
+    assert not full.flags.c_contiguous
+    assert _max_squared_speed(full) == pytest.approx(
+        _max_squared_speed(np.ascontiguousarray(full))
+    )
     assert _max_squared_speed(np.zeros((0, 3))) == 0.0
 
 

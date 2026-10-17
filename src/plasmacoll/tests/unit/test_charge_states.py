@@ -71,6 +71,15 @@ def test_initial_fractions_and_bad_inputs() -> None:
     beam = ChargeStateTransitions({"gas": {("0", "+"): 1e-20}})
     fractions = charge_state_fractions(beam, {"gas": PI}, initial={"0": 1.0})
     assert fractions[0] == pytest.approx([0.0, 1.0, 0.0])
+    assert charge_state_fractions(beam, {"gas": PI}, initial=[0.0, 1.0, 0.0])[0] == (
+        pytest.approx([0.0, 1.0, 0.0])
+    )
+    with pytest.raises(ValueError, match="at least one target"):
+        charge_state_fractions(beam, {})
+    with pytest.raises(ValueError, match="1D line density"):
+        charge_state_fractions(beam, {"gas": PI[:, None]})
+    with pytest.raises(ValueError, match="distinct"):
+        ChargeStateTransitions({"gas": {}}, states=["0", "0"])
     with pytest.raises(ValueError, match="no cross sections"):
         charge_state_fractions(beam, {"plasma": PI})
     with pytest.raises(ValueError, match="non-decreasing"):

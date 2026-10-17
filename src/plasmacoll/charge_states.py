@@ -160,6 +160,9 @@ def charge_state_fractions(
     fractions = np.empty((num, len(states)))
     fractions[0] = start
     for k in range(1, num):
-        step = sum((columns[t][k] - columns[t][k - 1]) * matrices[t] for t in columns)
+        step = sum(
+            ((columns[t][k] - columns[t][k - 1]) * matrices[t] for t in columns),
+            np.zeros((len(states), len(states))),
+        )
         fractions[k] = _expm(step) @ fractions[k - 1]
     return fractions
