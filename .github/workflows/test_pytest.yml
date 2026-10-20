@@ -53,7 +53,7 @@ jobs:
           fail_ci_if_error: false
 
   coverage:
-    name: combined coverage (NumPy + fake CuPy) is 100%
+    name: combined coverage (NumPy + fake CuPy) is at least 95%
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
