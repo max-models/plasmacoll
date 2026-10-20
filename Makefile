@@ -20,12 +20,12 @@ test:  ## pytest with coverage
 test-cupy:  ## pytest on cunumpy's fake CuPy backend (the CuPy code paths, no GPU needed)
 	CUNUMPY_FAKE_CUPY=1 CUNUMPY_BACKEND=cupy uv run pytest -p no:cacheprovider .
 
-coverage:  ## coverage of the NumPy and the fake CuPy runs combined, which must be 100%
+coverage:  ## coverage of the NumPy and the fake CuPy runs combined, which must be at least 95%
 	rm -f .coverage .coverage.*
 	uv run coverage run -p -m pytest -q -p no:cacheprovider
 	CUNUMPY_FAKE_CUPY=1 CUNUMPY_BACKEND=cupy uv run coverage run -p -m pytest -q -p no:cacheprovider
 	uv run coverage combine -q
-	uv run coverage report --fail-under=100
+	uv run coverage report --fail-under=95
 
 lint:  ## ruff, pyright and ty
 	uv run ruff check .

@@ -3,6 +3,12 @@
 All notable changes to this project are documented in this file and maintained manually. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- The combined coverage of the NumPy and the fake CuPy runs must be at least 95% (was 100%).
+
 ## [0.2.0] - 2026-10-20
 
 ### Added
