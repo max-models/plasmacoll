@@ -6,7 +6,7 @@ import cunumpy as xp
 import pytest
 
 from plasmacoll import MarkerSet, ParticleArrays
-from plasmacoll.constants import BOLTZMANN, ELEMENTARY_CHARGE
+from plasmacoll.constants import ELEMENTARY_CHARGE, kelvin_to_ev
 
 from ._helpers import M_HE
 
@@ -51,7 +51,7 @@ def test_remove_and_add() -> None:
 
 
 def test_maxwellian_has_the_requested_moments() -> None:
-    temperature, drift = 500.0, (300.0, -100.0, 0.0)
+    temperature, drift = kelvin_to_ev(500.0), (300.0, -100.0, 0.0)
     markers = ParticleArrays.maxwellian(
         200_000, M_HE, temperature, weight=2.0, drift=drift, ndim=3, seed=3
     )
@@ -61,13 +61,13 @@ def test_maxwellian_has_the_requested_moments() -> None:
     mean = xp.mean(markers.velocities, axis=0)
     assert bool(xp.allclose(mean, xp.asarray(drift), atol=5.0))
     drift_energy = 0.5 * M_HE * sum(d**2 for d in drift)
-    expected = (1.5 * BOLTZMANN * temperature + drift_energy) / ELEMENTARY_CHARGE
+    expected = 1.5 * temperature + drift_energy / ELEMENTARY_CHARGE
     assert markers.mean_energy_ev(M_HE) == pytest.approx(expected, rel=0.01)
 
 
 def test_maxwellian_is_reproducible() -> None:
-    first = ParticleArrays.maxwellian(10, M_HE, 300.0, seed=1)
-    second = ParticleArrays.maxwellian(10, M_HE, 300.0, seed=1)
+    first = ParticleArrays.maxwellian(10, M_HE, 0.025, seed=1)
+    second = ParticleArrays.maxwellian(10, M_HE, 0.025, seed=1)
     assert bool(xp.array_equal(first.velocities, second.velocities))
     cold = ParticleArrays.maxwellian(10, M_HE, 0.0)
     assert bool(xp.all(cold.velocities == 0.0))

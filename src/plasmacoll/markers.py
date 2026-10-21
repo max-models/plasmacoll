@@ -16,7 +16,7 @@ from typing import Any, Protocol, runtime_checkable
 import cunumpy as xp
 
 from plasmacoll._types import Array
-from plasmacoll.constants import BOLTZMANN, ELEMENTARY_CHARGE
+from plasmacoll.constants import ELEMENTARY_CHARGE
 
 __all__ = ["MarkerSet", "ParticleArrays"]
 
@@ -106,7 +106,8 @@ class ParticleArrays:
         Args:
             num: The number of markers.
             mass: Particle mass in kg.
-            temperature: Temperature in K; see :func:`plasmacoll.constants.ev_to_kelvin`.
+            temperature: Temperature ``kT`` in eV; see
+                :func:`plasmacoll.constants.kelvin_to_ev`.
             weight: Physical particles per marker.
             drift: Mean velocity in m/s.
             ndim: Number of position components.
@@ -121,7 +122,7 @@ class ParticleArrays:
             raise ValueError("temperature must be >= 0")
         if rng is None:
             rng = xp.rng.get_rng(seed)
-        thermal_speed = math.sqrt(BOLTZMANN * temperature / mass)
+        thermal_speed = math.sqrt(ELEMENTARY_CHARGE * temperature / mass)
         velocities = rng.standard_normal((num, 3)) * thermal_speed + xp.asarray(
             drift, dtype=float
         )
@@ -158,11 +159,11 @@ class ParticleArrays:
         return float(energy) / (total * ELEMENTARY_CHARGE)
 
     def temperature(self, mass: float) -> float:
-        """Return the kinetic temperature in K about the mean velocity (0 if empty)."""
+        """Return the kinetic temperature ``kT`` in eV about the mean (0 if empty)."""
         total = self.total_weight
         if total <= 0.0:
             return 0.0
         weights = self.weights[:, None]
         mean = xp.sum(weights * self.velocities, axis=0) / total
         spread = xp.sum(weights * (self.velocities - mean) ** 2) / total
-        return mass * float(spread) / (3.0 * BOLTZMANN)
+        return mass * float(spread) / (3.0 * ELEMENTARY_CHARGE)

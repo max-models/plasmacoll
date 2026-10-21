@@ -273,7 +273,7 @@ def test_mixture_attachment_runs_through_the_operator() -> None:
     mixture = CrossSection.vibrational_mixture(levels, distribution.populations)
     mcc = MonteCarloCollisions(
         species_masses={"e": M_E, "H-": M_H2},
-        backgrounds=[NeutralBackground("H2", 1.0e22, 300.0, M_H2)],
+        backgrounds=[NeutralBackground("H2", 1.0e22, 0.025, M_H2)],
         processes={
             "e": [
                 CollisionProcess(
@@ -287,7 +287,7 @@ def test_mixture_attachment_runs_through_the_operator() -> None:
         },
         seed=0,
     )
-    electrons = ParticleArrays.maxwellian(5000, M_E, 2.0e4, seed=1)
+    electrons = ParticleArrays.maxwellian(5000, M_E, kelvin_to_ev(2.0e4), seed=1)
     negative_ions = ParticleArrays.empty()
     diagnostics = mcc.collide_species({"e": electrons, "H-": negative_ions}, dt=1.0e-7)
     assert diagnostics["e"].counts["da"] == len(negative_ions) > 0

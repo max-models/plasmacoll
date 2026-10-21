@@ -19,14 +19,14 @@ from plasmacoll import (
     ParticleArrays,
     ZeroDReactor,
 )
-from plasmacoll.constants import BOLTZMANN, ELEMENTARY_CHARGE
+from plasmacoll.constants import ELEMENTARY_CHARGE, kelvin_to_ev
 
 from ._helpers import M_E, M_HE
 
 DENSITY = 1.0e21
 RATE = 1.0e-15
 NU = DENSITY * RATE
-TEMPERATURE = 300.0
+TEMPERATURE = kelvin_to_ev(300.0)
 
 
 def _swarm_operator(seed: int = 1) -> MonteCarloCollisions:
@@ -61,9 +61,7 @@ def test_drift_velocity_and_mean_energy_match_the_maxwell_model() -> None:
     energy = history.mean_energy_ev["He+"][late].mean()
 
     expected_drift = ELEMENTARY_CHARGE * field / (M_HE / 2.0 * NU)
-    expected_energy = (
-        1.5 * BOLTZMANN * TEMPERATURE + M_HE * expected_drift**2
-    ) / ELEMENTARY_CHARGE
+    expected_energy = 1.5 * TEMPERATURE + M_HE * expected_drift**2 / ELEMENTARY_CHARGE
     assert drift[0] == pytest.approx(expected_drift, rel=0.03)
     assert abs(drift[1]) < 0.03 * expected_drift
     assert energy == pytest.approx(expected_energy, rel=0.03)
