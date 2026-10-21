@@ -15,6 +15,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - The combined coverage of the NumPy and the fake CuPy runs must be at least 95% (was 100%).
+- **Breaking:** every temperature is ``kT`` in eV, as the rate coefficients already were:
+  `NeutralBackground.temperature`, the `temperature` of `ParticleArrays.maxwellian`, and
+  `ParticleArrays.temperature()` and the reactor's `temperature` (were K). Convert with
+  `plasmacoll.constants.kelvin_to_ev`.
 
 ## [0.2.0] - 2026-10-20
 

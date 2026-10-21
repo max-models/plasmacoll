@@ -8,11 +8,11 @@ operator, and collide markers with it:
 
 ```python
 import plasmacoll
-from plasmacoll.constants import ATOMIC_MASS, ELECTRON_MASS, ev_to_kelvin
+from plasmacoll.constants import ATOMIC_MASS, ELECTRON_MASS, kelvin_to_ev
 
 argon_mass = 39.95 * ATOMIC_MASS
 gas = plasmacoll.NeutralBackground(
-    "Ar", density=1e21, temperature=300.0, mass=argon_mass
+    "Ar", density=1e21, temperature=kelvin_to_ev(300.0), mass=argon_mass
 )
 
 elastic = plasmacoll.CrossSection.constant(1e-19)  # m^2
@@ -60,9 +60,7 @@ result.diagnostics.counts
 products once all species have collided:
 
 ```python
-electrons = plasmacoll.ParticleArrays.maxwellian(
-    100_000, ELECTRON_MASS, ev_to_kelvin(5.0), seed=2
-)
+electrons = plasmacoll.ParticleArrays.maxwellian(100_000, ELECTRON_MASS, 5.0, seed=2)
 ions = plasmacoll.ParticleArrays.empty()
 diagnostics = mcc.collide_species({"e": electrons, "Ar+": ions}, dt=1e-11)
 ```

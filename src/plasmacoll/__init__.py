@@ -10,10 +10,11 @@ field) for testing cross-section sets.
 
 Example:
     >>> import plasmacoll
-    >>> from plasmacoll.constants import ELECTRON_MASS, ATOMIC_MASS
+    >>> from plasmacoll.constants import ELECTRON_MASS, ATOMIC_MASS, kelvin_to_ev
     >>> mcc = plasmacoll.MonteCarloCollisions(
     ...     species_masses={"e": ELECTRON_MASS},
-    ...     backgrounds=[plasmacoll.NeutralBackground("Ar", 1e21, 300.0, 39.95 * ATOMIC_MASS)],
+    ...     backgrounds=[plasmacoll.NeutralBackground(
+    ...         "Ar", 1e21, kelvin_to_ev(300.0), 39.95 * ATOMIC_MASS)],
     ...     processes={"e": [plasmacoll.CollisionProcess(
     ...         "elastic", "Ar", plasmacoll.CrossSection.constant(1e-19))]},
     ...     seed=1,

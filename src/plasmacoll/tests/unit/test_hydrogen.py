@@ -60,8 +60,8 @@ def test_proton_hydrogen_processes_run_together() -> None:
     mcc = MonteCarloCollisions(
         species_masses={"H+": M_P},
         backgrounds=[
-            NeutralBackground("H", 1.0e20, 300.0, M_P),
-            NeutralBackground("H2", 1.0e20, 300.0, 2 * M_P),
+            NeutralBackground("H", 1.0e20, 0.025, M_P),
+            NeutralBackground("H2", 1.0e20, 0.025, 2 * M_P),
         ],
         processes={"H+": proton_hydrogen_processes(_tables())},
         seed=5,

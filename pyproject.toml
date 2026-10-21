@@ -104,3 +104,8 @@ include = [ "src" ]
 [tool.ty.analysis]
 # CuPy is optional and not installed in CI
 allowed-unresolved-imports = [ "cupy" ]
+
+# PRs to devel test against the devel branches of the max-models packages (pinned in
+# uv.lock); PRs to main and the release use PyPI only (CI sets UV_NO_SOURCES).
+[tool.uv.sources]
+cunumpy = { git = "https://github.com/max-models/cunumpy", branch = "devel" }

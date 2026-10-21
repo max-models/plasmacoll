@@ -26,7 +26,7 @@ from typing import Any, Protocol, runtime_checkable
 import cunumpy as xp
 
 from plasmacoll._types import Array
-from plasmacoll.constants import BOLTZMANN
+from plasmacoll.constants import ELEMENTARY_CHARGE
 
 __all__ = [
     "DensityProfile",
@@ -200,7 +200,7 @@ class NeutralBackground:
     Attributes:
         name: The name processes refer to the background by.
         density: Number density in m^-3.
-        temperature: Temperature in K.
+        temperature: Temperature ``kT`` in eV.
         mass: Mass of one neutral particle in kg.
         profile: Optional spatial variation of the density.
         temperature_profile: Optional spatial variation of the temperature.
@@ -240,7 +240,7 @@ class NeutralBackground:
     @property
     def thermal_speed(self) -> float:
         """Return the 1D thermal speed ``sqrt(k T / M)`` in m/s at ``temperature``."""
-        return math.sqrt(BOLTZMANN * self.temperature / self.mass)
+        return math.sqrt(ELEMENTARY_CHARGE * self.temperature / self.mass)
 
     @property
     def max_thermal_speed(self) -> float:
