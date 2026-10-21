@@ -16,6 +16,7 @@ from plasmacoll import (
     MonteCarloCollisions,
     NeutralBackground,
 )
+from plasmacoll.constants import kelvin_to_ev
 from plasmacoll.tests.unit._helpers import (
     HEAVY,
     M_E,
@@ -132,7 +133,11 @@ def test_electron_detachment_removes_h_minus_and_emits_electrons() -> None:
     electrons = DynamicProfile(lambda p: xp.full(p.shape[0], 1.0e18), 1.0e18)
     mcc = MonteCarloCollisions(
         species_masses={"H-": M_P, "e": M_E},
-        backgrounds=[_target("electrons", electrons, mass=M_E, temperature=23_000.0)],
+        backgrounds=[
+            _target(
+                "electrons", electrons, mass=M_E, temperature=kelvin_to_ev(23_000.0)
+            )
+        ],
         processes={
             "H-": [
                 CollisionProcess(
@@ -162,8 +167,12 @@ def test_mutual_neutralization_removes_both_species_at_the_same_rate() -> None:
     mcc = MonteCarloCollisions(
         species_masses={"H+": M_P, "H-": M_P},
         backgrounds=[
-            _target("H+ density", plus_density, mass=M_P, temperature=2_000.0),
-            _target("H- density", minus_density, mass=M_P, temperature=2_000.0),
+            _target(
+                "H+ density", plus_density, mass=M_P, temperature=kelvin_to_ev(2_000.0)
+            ),
+            _target(
+                "H- density", minus_density, mass=M_P, temperature=kelvin_to_ev(2_000.0)
+            ),
         ],
         processes={
             "H-": [CollisionProcess("charge_transfer", "H+ density", constant(sigma))],

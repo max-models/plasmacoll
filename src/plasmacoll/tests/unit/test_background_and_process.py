@@ -8,7 +8,7 @@ import cunumpy as xp
 import pytest
 
 from plasmacoll import CollisionProcess, DensityProfile, NeutralBackground, make_rng
-from plasmacoll.constants import BOLTZMANN
+from plasmacoll.constants import ELEMENTARY_CHARGE
 
 from ._helpers import M_P, constant
 
@@ -18,10 +18,10 @@ def test_density_profile_interpolates_and_bounds() -> None:
     positions = xp.asarray([[9.0, -1.0], [9.0, 0.5], [9.0, 1.5], [9.0, 5.0]])
     assert bool(xp.allclose(profile(positions), [0.0, 0.5, 0.75, 0.5]))
     assert profile.max_factor == 1.0
-    background = NeutralBackground("H", 1.0e19, 300.0, M_P, profile=profile)
+    background = NeutralBackground("H", 1.0e19, 0.025, M_P, profile=profile)
     assert background.max_density_factor == 1.0
     assert bool(xp.allclose(background.density_factor(positions), profile(positions)))
-    uniform = NeutralBackground("H", 1.0e19, 300.0, M_P)
+    uniform = NeutralBackground("H", 1.0e19, 0.025, M_P)
     assert uniform.max_density_factor == 1.0
     assert uniform.density_factor(positions) == 1.0
 
@@ -46,9 +46,9 @@ def test_density_profile_rejects_bad_tables(
 @pytest.mark.parametrize(
     ("density", "temperature", "mass", "message"),
     [
-        (-1.0, 300.0, 1.0, "density"),
+        (-1.0, 0.025, 1.0, "density"),
         (1.0, -1.0, 1.0, "temperature"),
-        (1.0, 300.0, 0.0, "mass"),
+        (1.0, 0.025, 0.0, "mass"),
     ],
 )
 def test_background_rejects_unphysical_parameters(
@@ -59,9 +59,9 @@ def test_background_rejects_unphysical_parameters(
 
 
 def test_background_samples_its_maxwellian() -> None:
-    background = NeutralBackground("H", 1.0e19, 1000.0, M_P)
+    background = NeutralBackground("H", 1.0e19, 0.1, M_P)
     assert background.thermal_speed == pytest.approx(
-        math.sqrt(BOLTZMANN * 1000.0 / M_P)
+        math.sqrt(ELEMENTARY_CHARGE * 0.1 / M_P)
     )
     velocities = background.sample_velocities(make_rng(0), 200_000)
     assert velocities.shape == (200_000, 3)

@@ -55,9 +55,9 @@ def test_merged_markers_stay_in_their_cell() -> None:
 
 
 def test_merging_keeps_the_temperature_of_a_maxwellian() -> None:
-    markers = ParticleArrays.maxwellian(20_000, M_HE, 1000.0, seed=3)
+    markers = ParticleArrays.maxwellian(20_000, M_HE, 0.1, seed=3)
     merge_markers(markers, 2000, seed=4)
-    assert markers.temperature(M_HE) == pytest.approx(1000.0, rel=0.03)
+    assert markers.temperature(M_HE) == pytest.approx(0.1, rel=0.03)
 
 
 def test_merging_does_nothing_below_the_target_or_without_groups() -> None:
