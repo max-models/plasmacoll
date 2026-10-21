@@ -21,7 +21,7 @@ from plasmacoll import (
     make_rng,
     read_lxcat,
 )
-from plasmacoll.constants import BOLTZMANN
+from plasmacoll.constants import ELEMENTARY_CHARGE
 
 from ._helpers import M_HE
 from .test_cross_sections import LXCAT_EXAMPLE
@@ -83,7 +83,7 @@ def test_elastic_from_lxcat(tmp_path: Path) -> None:
 # Backgrounds
 # --------------------------------------------------------------------- #
 def test_drifting_background_samples_its_flow_velocity() -> None:
-    gas = NeutralBackground("gas", 1.0e20, 300.0, M_HE, drift=(1000.0, 0.0, -500.0))
+    gas = NeutralBackground("gas", 1.0e20, 0.025, M_HE, drift=(1000.0, 0.0, -500.0))
     assert gas.drift_speed == pytest.approx(np.hypot(1000.0, 500.0))
     velocities = _host(gas.sample_velocities(make_rng(1), 200_000))
     np.testing.assert_allclose(
@@ -91,7 +91,7 @@ def test_drifting_background_samples_its_flow_velocity() -> None:
     )
     two_components: Any = (1.0, 2.0)
     with pytest.raises(ValueError, match="three components"):
-        NeutralBackground("gas", 1.0e20, 300.0, M_HE, drift=two_components)
+        NeutralBackground("gas", 1.0e20, 0.025, M_HE, drift=two_components)
 
 
 def test_temperature_profile_scales_the_sampled_temperature() -> None:
@@ -99,15 +99,15 @@ def test_temperature_profile_scales_the_sampled_temperature() -> None:
         lambda x: xp.where(x[:, 0] > 0.0, 4.0, 1.0), max_factor=4.0
     )
     assert isinstance(hot_right, Profile)
-    gas = NeutralBackground("gas", 1.0e20, 300.0, M_HE, temperature_profile=hot_right)
+    gas = NeutralBackground("gas", 1.0e20, 0.025, M_HE, temperature_profile=hot_right)
     assert gas.max_thermal_speed == pytest.approx(2.0 * gas.thermal_speed)
     num = 200_000
     positions = xp.asarray(np.repeat([[-1.0], [1.0]], num // 2, axis=0))
     velocities = _host(gas.sample_velocities(make_rng(2), num, positions))
-    cold = M_HE * velocities[: num // 2].var(axis=0).mean() / BOLTZMANN
-    hot = M_HE * velocities[num // 2 :].var(axis=0).mean() / BOLTZMANN
-    assert cold == pytest.approx(300.0, rel=0.02)
-    assert hot == pytest.approx(1200.0, rel=0.02)
+    cold = M_HE * velocities[: num // 2].var(axis=0).mean() / ELEMENTARY_CHARGE
+    hot = M_HE * velocities[num // 2 :].var(axis=0).mean() / ELEMENTARY_CHARGE
+    assert cold == pytest.approx(0.025, rel=0.02)
+    assert hot == pytest.approx(0.1, rel=0.02)
     with pytest.raises(ValueError, match="positions"):
         gas.sample_velocities(make_rng(2), 10)
 
@@ -122,7 +122,7 @@ def test_ions_relax_to_a_flowing_heated_gas() -> None:
     gas = NeutralBackground(
         "gas",
         1.0e21,
-        300.0,
+        0.025,
         M_HE,
         drift=(2000.0, 0.0, 0.0),
         temperature_profile=FunctionProfile(lambda x: xp.full(x.shape[0], 2.0), 2.0),
@@ -141,10 +141,10 @@ def test_ions_relax_to_a_flowing_heated_gas() -> None:
         },
         seed=3,
     )
-    ions = ParticleArrays.maxwellian(20_000, M_HE, 300.0, seed=4)
+    ions = ParticleArrays.maxwellian(20_000, M_HE, 0.025, seed=4)
     nu = 0.5 * 1.0e21 * rate
     for _ in range(400):
         mcc.collide_species({"ion": ions}, 0.05 / nu)
     mean = _host(xp.sum(ions.velocities, axis=0)) / len(ions)
     assert mean[0] == pytest.approx(2000.0, rel=0.05)
-    assert ions.temperature(M_HE) == pytest.approx(600.0, rel=0.05)
+    assert ions.temperature(M_HE) == pytest.approx(0.05, rel=0.05)

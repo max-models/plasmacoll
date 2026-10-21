@@ -34,7 +34,8 @@ class ReactorState:
         time: Elapsed time in s.
         density: Number density in m^-3 per species.
         mean_energy_ev: Mean kinetic energy in eV per species.
-        temperature: Kinetic temperature in K about the mean velocity, per species.
+        temperature: Kinetic temperature ``kT`` in eV about the mean velocity, per
+            species.
         num_markers: Number of markers per species.
         collisions: Cumulative number of collisions per process name.
         mean_velocity: Weighted mean velocity in m/s per species, shape ``(3,)``:
@@ -58,7 +59,7 @@ class ReactorHistory:
         time: Times in s, shape ``(T,)``.
         density: Number density in m^-3 per species, each of shape ``(T,)``.
         mean_energy_ev: Mean kinetic energy in eV per species.
-        temperature: Kinetic temperature in K per species.
+        temperature: Kinetic temperature ``kT`` in eV per species.
         num_markers: Number of markers per species.
         collisions: Cumulative number of collisions per process name.
         mean_velocity: Mean velocity in m/s per species, each of shape ``(T, 3)``.
