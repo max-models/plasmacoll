@@ -24,6 +24,7 @@ classifiers = [
 dependencies = [
   "cunumpy>=0.5",
   "numpy",
+  "scope-profiler>=0.7.5",
 ]
 
 optional-dependencies.dev = [
@@ -44,6 +45,9 @@ optional-dependencies.docs = [
 ]
 optional-dependencies.test = [ "pytest", "pytest-cov" ]
 urls."Source" = "https://github.com/max-models/plasmacoll"
+
+[tool.uv.sources]
+scope-profiler = { git = "https://github.com/max-models/scope-profiler", branch = "devel" }
 
 [tool.setuptools.packages.find]
 where = [ "src" ]
