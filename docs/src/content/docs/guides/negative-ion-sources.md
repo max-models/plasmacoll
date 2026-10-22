@@ -86,7 +86,9 @@ from plasmacoll.vibrational import VibrationalDistribution
 fit = JANEV_FITS["e_h2_singlet_B"]
 fit(50.0)  # m^2 at 50 eV
 table = fit.cross_section()  # a CrossSection with the threshold, for a process
-attachment = dissociative_attachment(VibrationalDistribution.h2_ground_state_from_kelvin(5000.0))
+attachment = dissociative_attachment(
+    VibrationalDistribution.h2_ground_state_from_kelvin(5000.0)
+)
 ```
 
 Electron collisions with H₂ are fitted against the electron energy (`energy_frame="lab"`), the
