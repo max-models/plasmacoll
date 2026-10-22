@@ -15,6 +15,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   as LXCat does not allow redistribution.
 - `read_lxcat` reads the ion-neutral blocks of the LXCat Phelps database (kinds `ISOTROPIC` and
   `BACKSCAT`), which have no keyword line and were skipped before.
+- A two-term Boltzmann solver for electrons in a DC field, after Hagelaar and Pitchford (2005):
+  `solve_eedf` returns the energy distribution, mean energy, `mu N`, `D N`, the rate coefficient
+  of every process and `alpha / N` for the same `CollisionProcess` and `NeutralBackground`
+  objects the Monte Carlo collisions use, with temporal or spatial growth for ionization and
+  attachment. `swarm_table` tabulates the results against the mean energy for fluid and global
+  models. Checked against the Maxwell and Druyvesteyn limits, the Reid ramp and Lucas–Saelee
+  model gases and BOLOS.
+- `plasmacoll.constants.TOWNSEND`, 1 Td in V m².
 
 ## [0.3.0] - 2026-10-21
 
