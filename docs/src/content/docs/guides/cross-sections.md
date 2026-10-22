@@ -56,9 +56,10 @@ cross section instead.
 
 ## Data
 
-plasmacoll does not ship cross-section data. Download sets from [LXCat](https://lxcat.net) and cite
-the databases as their terms of use require, or use tables from the literature with
-`from_table`. The tutorials and tests use synthetic tables and Maxwell molecules, and they say
+Download sets from [LXCat](https://lxcat.net) and cite the databases as their terms of use
+require, or use tables from the literature with `from_table`. The one data set plasmacoll ships
+is `plasmacoll.janev`, the analytic hydrogen fits of Janev, Reiter and Samm (2003), see
+[Negative-ion sources](/plasmacoll/guides/negative-ion-sources/#hydrogen-cross-sections). The tutorials and tests use synthetic tables and Maxwell molecules, and they say
 so wherever they appear.
 
 ## Maxwell molecules

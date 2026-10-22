@@ -3,6 +3,15 @@
 All notable changes to this project are documented in this file and maintained manually. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- `plasmacoll.janev`: the hydrogen cross-section fits of Janev, Reiter and Samm (Jül-4105, 2003)
+  for e + H₂ vibrational and electronic excitation, ionization and dissociative ionization,
+  dissociative attachment over an H₂(v) population, e + H⁻ detachment, H⁺ + H⁻ mutual
+  neutralization and H⁻ + H detachment, checked against the report and HYDHEL.
+
 ## [0.3.0] - 2026-10-21
 
 ### Added
