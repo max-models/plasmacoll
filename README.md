@@ -25,9 +25,13 @@ optionally in an electric field, for testing cross-section sets.
 - **Neutral gases:** drifting Maxwellians with density and temperature
   profiles, replaceable between steps for gas heating or depletion.
 - **Cross sections:** from text tables, LXCat files (with `EFFECTIVE`
-  sets converted to elastic) or functions. Also Maxwell molecules for
-  benchmarks, and population-weighted mixtures of level-resolved tables,
-  e.g. H₂(v) dissociative attachment.
+  sets converted to elastic, and the ion-neutral blocks of the Phelps
+  database) or functions. Also Maxwell molecules for benchmarks, and
+  population-weighted mixtures of level-resolved tables, e.g. H₂(v)
+  dissociative attachment.
+- **Argon and metals:** electron-argon processes from a downloaded LXCat
+  set, Phelps’ Ar⁺ + Ar fits, and Lotz ionization cross sections for
+  sputtered Cu and Ti atoms and ions.
 - **Plain arrays:** markers are positions, velocities and weights. Any
   particle container with those plugs in, and
   [cunumpy](https://pypi.org/project/cunumpy/) runs the same code on CPU
@@ -97,9 +101,9 @@ In a particle-in-cell code, call
 [Use in a particle-in-cell
 code](https://max-models.github.io/plasmacoll/guides/particle-in-cell/).
 
-plasmacoll does not ship cross-section data. Load tables from
-[LXCat](https://lxcat.net) or the literature with
-`plasmacoll.read_lxcat` and `CrossSection.from_table`.
+plasmacoll does not ship tabulated cross-section data, only published
+analytic fits. Load tables from [LXCat](https://lxcat.net) or the
+literature with `plasmacoll.read_lxcat` and `CrossSection.from_table`.
 
 ## Development
 
