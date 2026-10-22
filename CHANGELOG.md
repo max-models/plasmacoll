@@ -3,6 +3,15 @@
 All notable changes to this project are documented in this file and maintained manually. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- `RuddIonization` and `RuddShell`: Rudd's singly differential cross section for the secondary
+  electrons of ionization by fast ions (Rev. Mod. Phys. 64, 441, 1992), its integrals over the
+  secondary energy (`total`, `mean_energy`, `cross_section`) and any projectile mass at equal
+  speed. `RUDD_H2`, the review's H2 parameters, reproduces its Table VII to 1%.
+
 ## [0.3.0] - 2026-10-21
 
 ### Added

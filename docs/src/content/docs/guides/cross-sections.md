@@ -59,7 +59,8 @@ cross section instead.
 plasmacoll does not ship cross-section data. Download sets from [LXCat](https://lxcat.net) and cite
 the databases as their terms of use require, or use tables from the literature with
 `from_table`. The tutorials and tests use synthetic tables and Maxwell molecules, and they say
-so wherever they appear.
+so wherever they appear. The one exception is the H₂ parameter set of Rudd's model (below),
+published as fit parameters and checked in the tests against the review's own table.
 
 ## Maxwell molecules
 
@@ -78,3 +79,18 @@ energy-to-speed conversion matches the process.
 `vibrational_mixture` evaluates every level through its own threshold and inserts table points
 on both sides of each threshold, so the mixture keeps the steps sharp. The populations need not
 be normalized. See [negative-ion sources](/plasmacoll/guides/negative-ion-sources/).
+
+## Secondary electrons of ion impact
+
+`RuddIonization` is Rudd's semi-empirical singly differential cross section $d\sigma/dW$ for
+ejecting an electron of energy $W$ from a target by a fast ion (Rudd, Kim, Madison and Gay, Rev.
+Mod. Phys. 64, 441, 1992, Eqs. (37)–(48)): a sum over the target's shells (`RuddShell`: binding
+energy, occupation and ten fit parameters). It depends on the projectile only through its speed,
+so `with_projectile(mass)` turns the proton model into one for deuterons. `total(energy)` and
+`mean_energy(energy)` integrate it over $W$: the ionization cross section and the mean energy of
+the secondary electrons, the source terms of a plasma that a fast beam ionizes.
+`cross_section(energies)` tabulates the total as a `CrossSection` of the projectile energy.
+
+`RUDD_H2` holds the H₂ parameters of the review (Table V, binding energy from Table I(a)); it
+reproduces the review's Table VII of recommended H⁺ + H₂ cross sections to 1 %. For 1 MeV
+deuterons on H₂ the total is 6.3 × 10⁻²¹ m² and the mean secondary energy 37 eV.

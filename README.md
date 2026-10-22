@@ -27,7 +27,9 @@ optionally in an electric field, for testing cross-section sets.
 - **Cross sections:** from text tables, LXCat files (with `EFFECTIVE`
   sets converted to elastic) or functions. Also Maxwell molecules for
   benchmarks, and population-weighted mixtures of level-resolved tables,
-  e.g. H₂(v) dissociative attachment.
+  e.g. H₂(v) dissociative attachment. Rudd’s energy distribution of the
+  secondary electrons of ionization by fast ions, with its H₂
+  parameters.
 - **Plain arrays:** markers are positions, velocities and weights. Any
   particle container with those plugs in, and
   [cunumpy](https://pypi.org/project/cunumpy/) runs the same code on CPU
