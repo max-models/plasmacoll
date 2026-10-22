@@ -19,7 +19,9 @@ from dataclasses import dataclass
 
 import cunumpy as xp
 import numpy as np
+import scope_profiler as sp
 
+from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll._types import Array
 from plasmacoll.constants import ELEMENTARY_CHARGE
 from plasmacoll.cross_sections import CrossSection
@@ -30,6 +32,7 @@ __all__ = ["RateTable", "rate_coefficient"]
 _LOW, _HIGH = 1.0e-6, 60.0
 
 
+@sp.profile("plasmacoll.rate_coefficient", tags=PROFILE_TAGS)
 def rate_coefficient(
     cross_section: CrossSection,
     temperature: float | Array,

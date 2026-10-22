@@ -24,7 +24,7 @@ from plasmacoll import (
     ReactorHistory,
     ZeroDReactor,
 )
-from plasmacoll.constants import BOLTZMANN, ELEMENTARY_CHARGE, ev_to_kelvin
+from plasmacoll.constants import ELEMENTARY_CHARGE, kelvin_to_ev
 
 from ._helpers import M_E, M_HE
 
@@ -32,7 +32,7 @@ DENSITY = 1.0e20
 RATE = 1.0e-15
 NU = DENSITY * RATE
 SAFETY = 1.02
-GAS_TEMPERATURE = 300.0
+GAS_TEMPERATURE = kelvin_to_ev(300.0)
 
 
 def _step_probability(dt: float) -> float:
@@ -54,7 +54,7 @@ def test_resonant_charge_exchange_relaxes_temperature_and_drift() -> None:
     process = CollisionProcess(
         "backscatter", "gas", CrossSection.maxwell_molecule(RATE, M_HE / 2)
     )
-    temperature, drift = 3000.0, 2000.0
+    temperature, drift = kelvin_to_ev(3000.0), 2000.0
     ions = ParticleArrays.maxwellian(
         200_000, M_HE, temperature, drift=(drift, 0, 0), seed=1
     )
@@ -63,7 +63,7 @@ def test_resonant_charge_exchange_relaxes_temperature_and_drift() -> None:
     history = reactor.run(dt, 200, every=10)
 
     f = (1.0 - _step_probability(dt)) ** (history.time / dt)
-    mixing = M_HE * drift**2 * f * (1.0 - f) / (3.0 * BOLTZMANN)
+    mixing = M_HE * drift**2 * f * (1.0 - f) / (3.0 * ELEMENTARY_CHARGE)
     expected = GAS_TEMPERATURE + (temperature - GAS_TEMPERATURE) * f + mixing
     assert np.allclose(history.temperature["ion"], expected, rtol=0.02)
     assert history.collisions["backscatter:gas"][0] == 0
@@ -82,7 +82,7 @@ def test_equal_mass_elastic_energy_relaxes_at_half_the_collision_frequency() -> 
     reactor = ZeroDReactor(_operator(process, {"ion": M_HE}, "ion"), {"ion": ions})
     history = reactor.run(dt, 200, every=20)
 
-    gas_energy = 1.5 * BOLTZMANN * GAS_TEMPERATURE / ELEMENTARY_CHARGE
+    gas_energy = 1.5 * GAS_TEMPERATURE
     initial = history.mean_energy_ev["ion"][0]
     effective_rate = -math.log(1.0 - _step_probability(dt)) / dt
     expected = gas_energy + (initial - gas_energy) * np.exp(
@@ -100,7 +100,7 @@ def test_ionization_grows_the_density_geometrically() -> None:
         products={"electron": "e", "ion": "He+"},
     )
     num = 20_000
-    electrons = ParticleArrays.maxwellian(num, M_E, ev_to_kelvin(5.0), seed=5)
+    electrons = ParticleArrays.maxwellian(num, M_E, 5.0, seed=5)
     dt = 0.01 / NU
     reactor = ZeroDReactor(
         _operator(process, {"e": M_E, "He+": M_HE}, "e"), {"e": electrons}, volume=2.0
@@ -126,7 +126,7 @@ def test_attachment_decays_the_electron_density() -> None:
         products={"negative_ion": "He-"},
     )
     num = 100_000
-    electrons = ParticleArrays.maxwellian(num, M_E, ev_to_kelvin(1.0), seed=6)
+    electrons = ParticleArrays.maxwellian(num, M_E, 1.0, seed=6)
     dt = 0.01 / NU
     reactor = ZeroDReactor(
         _operator(process, {"e": M_E, "He-": M_HE}, "e"), {"e": electrons}
@@ -159,7 +159,7 @@ def test_reactor_validates_its_input() -> None:
 
 def test_history_stacks_states_with_missing_keys(tmp_path: Path) -> None:
     process = CollisionProcess("elastic", "gas", CrossSection.constant(1e-19))
-    electrons = ParticleArrays.maxwellian(100, M_E, 1.0e4, seed=0)
+    electrons = ParticleArrays.maxwellian(100, M_E, 1.0, seed=0)
     reactor = ZeroDReactor(_operator(process, {"e": M_E}, "e"), {"e": electrons})
     states = [reactor.state(), reactor.step(1.0e-9)]
     history = ReactorHistory.from_states(states)

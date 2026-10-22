@@ -54,11 +54,11 @@ pip install plasmacoll
 
 ```python
 import plasmacoll
-from plasmacoll.constants import ATOMIC_MASS, ELECTRON_MASS, ev_to_kelvin
+from plasmacoll.constants import ATOMIC_MASS, ELECTRON_MASS, kelvin_to_ev
 
 argon_mass = 39.95 * ATOMIC_MASS
 argon_gas = plasmacoll.NeutralBackground(
-    "Ar", density=1e21, temperature=300.0, mass=argon_mass
+    "Ar", density=1e21, temperature=kelvin_to_ev(300.0), mass=argon_mass
 )
 
 elastic_xs = plasmacoll.CrossSection.constant(1e-19)
@@ -79,7 +79,7 @@ mcc = plasmacoll.MonteCarloCollisions(
     seed=1,
 )
 
-temperature = ev_to_kelvin(10.0)
+temperature = 10.0  # kT in eV
 electrons = plasmacoll.ParticleArrays.maxwellian(
     100_000, ELECTRON_MASS, temperature, seed=2
 )

@@ -17,7 +17,9 @@ from pathlib import Path
 
 import cunumpy as xp
 import numpy as np
+import scope_profiler as sp
 
+from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll._types import Array, PathLikeStr
 from plasmacoll.constants import ELEMENTARY_CHARGE
 
@@ -402,6 +404,7 @@ def _split_reaction(target_line: str) -> tuple[str, str]:
     return target_line, ""
 
 
+@sp.profile("plasmacoll.read_lxcat", tags=PROFILE_TAGS)
 def read_lxcat(path: PathLikeStr) -> list[LXCatProcess]:
     """Parse an LXCat cross-section file.
 

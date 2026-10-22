@@ -18,7 +18,7 @@ from plasmacoll import (
     ParticleArrays,
     make_rng,
 )
-from plasmacoll.constants import BOLTZMANN
+from plasmacoll.constants import ELEMENTARY_CHARGE
 
 from ._helpers import (
     HEAVY,
@@ -164,7 +164,7 @@ def test_elastic_scattering_on_heavy_target_is_isotropic_and_elastic() -> None:
 
 def test_elastic_scattering_keeps_a_thermal_distribution_thermal() -> None:
     """Equal-mass ions at the gas temperature stay there (detailed balance)."""
-    temperature = 300.0
+    temperature = 0.025
     mcc = operator(
         [CollisionProcess("elastic", "gas", constant(1.0e-18))],
         {"ion": M_HE},
@@ -181,7 +181,7 @@ def test_elastic_scattering_keeps_a_thermal_distribution_thermal() -> None:
 
 def test_cold_ions_thermalize_to_the_background_temperature() -> None:
     """Repeated equal-mass elastic collisions relax cold ions to the gas temperature."""
-    temperature = 300.0
+    temperature = 0.025
     mcc = operator(
         [CollisionProcess("elastic", "gas", constant(1.0e-18))],
         {"ion": M_HE},
@@ -197,7 +197,7 @@ def test_cold_ions_thermalize_to_the_background_temperature() -> None:
             "ion", _origin(num), velocities, _ones(num), dt=1.0
         ).velocities
         mean_square = float(xp.mean(xp.sum(velocities**2, axis=1)))
-        temperatures.append(M_HE * mean_square / (3.0 * BOLTZMANN))
+        temperatures.append(M_HE * mean_square / (3.0 * ELEMENTARY_CHARGE))
     assert temperatures[0] < temperature
     assert temperatures[-1] == pytest.approx(temperature, rel=0.02)
     assert max(temperatures[-10:]) == pytest.approx(temperature, rel=0.03)
@@ -446,7 +446,7 @@ def test_batched_processes_attribute_the_correct_background(monkeypatch) -> None
 def _two_process_operator(seed: int = 0, rank: int = 0) -> MonteCarloCollisions:
     return MonteCarloCollisions(
         species_masses={"e": M_E},
-        backgrounds=[NeutralBackground("gas", 1.0e20, 300.0, M_HE)],
+        backgrounds=[NeutralBackground("gas", 1.0e20, 0.025, M_HE)],
         processes={
             "e": [
                 CollisionProcess("elastic", "gas", constant(1.0e-19), name="el"),
@@ -593,7 +593,7 @@ def test_exceeding_the_frequency_bound_warns_once(monkeypatch) -> None:
 
 
 def test_operator_validates_its_definition() -> None:
-    gas = [NeutralBackground("gas", 1.0e20, 300.0, M_HE)]
+    gas = [NeutralBackground("gas", 1.0e20, 0.025, M_HE)]
     elastic = CollisionProcess("elastic", "gas", constant(1.0e-19))
     with pytest.raises(KeyError, match="colliding species"):
         MonteCarloCollisions({}, gas, {"e": [elastic]})
@@ -638,7 +638,7 @@ def test_collide_species_adds_products_and_removes_consumed_markers() -> None:
     ions = ParticleArrays.empty()
     mcc = MonteCarloCollisions(
         species_masses={"e": M_E, "He+": M_HE},
-        backgrounds=[NeutralBackground("He", 1.0e20, 300.0, M_HE)],
+        backgrounds=[NeutralBackground("He", 1.0e20, 0.025, M_HE)],
         processes={
             "e": [
                 CollisionProcess(

@@ -17,7 +17,9 @@ from dataclasses import dataclass, field
 
 import cunumpy as xp
 import numpy as np
+import scope_profiler as sp
 
+from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll.constants import ELEMENTARY_CHARGE
 from plasmacoll.markers import ParticleArrays
 from plasmacoll.mcc import MonteCarloCollisions
@@ -34,7 +36,8 @@ class ReactorState:
         time: Elapsed time in s.
         density: Number density in m^-3 per species.
         mean_energy_ev: Mean kinetic energy in eV per species.
-        temperature: Kinetic temperature in K about the mean velocity, per species.
+        temperature: Kinetic temperature ``kT`` in eV about the mean velocity, per
+            species.
         num_markers: Number of markers per species.
         collisions: Cumulative number of collisions per process name.
         mean_velocity: Weighted mean velocity in m/s per species, shape ``(3,)``:
@@ -58,7 +61,7 @@ class ReactorHistory:
         time: Times in s, shape ``(T,)``.
         density: Number density in m^-3 per species, each of shape ``(T,)``.
         mean_energy_ev: Mean kinetic energy in eV per species.
-        temperature: Kinetic temperature in K per species.
+        temperature: Kinetic temperature ``kT`` in eV per species.
         num_markers: Number of markers per species.
         collisions: Cumulative number of collisions per process name.
         mean_velocity: Mean velocity in m/s per species, each of shape ``(T, 3)``.
@@ -205,6 +208,7 @@ class ZeroDReactor:
         self._advance(dt)
         return self.state()
 
+    @sp.profile("plasmacoll.reactor_step", tags=PROFILE_TAGS)
     def _advance(self, dt: float) -> None:
         """Advance one step without computing the diagnostics of the state."""
         if any(self._electric_field):
@@ -224,6 +228,7 @@ class ZeroDReactor:
         self._iteration += 1
         self._time += dt
 
+    @sp.profile("plasmacoll.reactor_run", tags=PROFILE_TAGS)
     def run(self, dt: float, num_steps: int, every: int = 1) -> ReactorHistory:
         """Advance ``num_steps`` steps of ``dt`` (s).
 

@@ -10,16 +10,20 @@ field) for testing cross-section sets.
 
 Example:
     >>> import plasmacoll
-    >>> from plasmacoll.constants import ELECTRON_MASS, ATOMIC_MASS
+    >>> from plasmacoll.constants import ELECTRON_MASS, ATOMIC_MASS, kelvin_to_ev
     >>> mcc = plasmacoll.MonteCarloCollisions(
     ...     species_masses={"e": ELECTRON_MASS},
-    ...     backgrounds=[plasmacoll.NeutralBackground("Ar", 1e21, 300.0, 39.95 * ATOMIC_MASS)],
+    ...     backgrounds=[plasmacoll.NeutralBackground(
+    ...         "Ar", 1e21, kelvin_to_ev(300.0), 39.95 * ATOMIC_MASS)],
     ...     processes={"e": [plasmacoll.CollisionProcess(
     ...         "elastic", "Ar", plasmacoll.CrossSection.constant(1e-19))]},
     ...     seed=1,
     ... )
 """
 
+import scope_profiler as sp
+
+from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll.background import (
     DensityProfile,
     DynamicProfile,
@@ -55,7 +59,10 @@ from plasmacoll.vibrational import (
     estimate_electronegativity,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
+
+# The decorated functions pick the tag up, so registering after the imports is in time.
+sp.register_opt_in_tag(*PROFILE_TAGS)
 
 __all__ = [
     "ChargeStateTransitions",
