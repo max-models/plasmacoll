@@ -117,6 +117,12 @@ in negative-ion sources: momentum transfer with H and H₂, charge exchange with
 H₂ (charge transfer), and rotational and vibrational excitation of H₂. It takes the cross-section
 tables as input. See [negative-ion sources](/plasmacoll/guides/negative-ion-sources/).
 
+## Process sets for argon
+
+`plasmacoll.argon_electron_processes(lxcat_file)` turns a downloaded LXCat argon set into elastic,
+excitation and ionization processes, and `plasmacoll.argon_ion_processes()` returns Phelps'
+isotropic and backscatter Ar⁺ + Ar processes. See [argon and metals](/plasmacoll/guides/argon-and-metals/).
+
 ## Out of scope
 
 The targets are always neutral gases. Collisions between charged particles (Coulomb collisions

@@ -7,6 +7,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Argon and metal process sets for magnetron models (`plasmacoll.argon`, `plasmacoll.metals`):
+  `argon_electron_processes` builds the electron-argon processes of a downloaded LXCat set,
+  `argon_ion_processes` the isotropic and backscatter Ar+ + Ar processes from Phelps' 1994 or
+  2005 fits or the LXCat Phelps database, and `metal_ionization_cross_section` and
+  `lotz_cross_section` the Lotz ionization of Cu, Ti and their ions. No LXCat data is included,
+  as LXCat does not allow redistribution.
+- `read_lxcat` reads the ion-neutral blocks of the LXCat Phelps database (kinds `ISOTROPIC` and
+  `BACKSCAT`), which have no keyword line and were skipped before.
 - A two-term Boltzmann solver for electrons in a DC field, after Hagelaar and Pitchford (2005):
   `solve_eedf` returns the energy distribution, mean energy, `mu N`, `D N`, the rate coefficient
   of every process and `alpha / N` for the same `CollisionProcess` and `NeutralBackground`
