@@ -83,3 +83,24 @@ plasmacoll uses [cunumpy](https://pypi.org/project/cunumpy/) for all array opera
 backend selected, pass CuPy arrays. The bound tables stay on the host (a handful of floats), and
 everything per marker runs on the device. With a generator other than NumPy's, such as CuPy's,
 the candidate selection draws one random number per marker, which runs in parallel on the device.
+
+## Profiling
+
+plasmacoll ships [scope-profiler](https://github.com/max-models/scope-profiler) regions around
+its coarse operations: `plasmacoll.collide`, `plasmacoll.collide_species`,
+`plasmacoll.collide_process`, `plasmacoll.tabulate_bounds`, `plasmacoll.reactor_run`,
+`plasmacoll.reactor_step`, `plasmacoll.merge_markers`, `plasmacoll.split_markers`,
+`plasmacoll.rate_coefficient`, `plasmacoll.read_lxcat` and `plasmacoll.charge_state_fractions`.
+They are tagged with the opt-in tag `plasmacoll`, so they are off by default and cost a fraction
+of a microsecond per call. A code that profiles itself with scope-profiler turns them on with the
+tag:
+
+```python
+import scope_profiler as sp
+
+sp.setup(enable_tags=["plasmacoll"])
+```
+
+or without editing the code, with `SCOPE_PROFILER_ENABLE_TAGS=plasmacoll`,
+`scope-profiler run --enable-tag plasmacoll` or `enable_tags = ["plasmacoll"]` in the TOML
+configuration.

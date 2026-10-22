@@ -27,6 +27,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
+import scope_profiler as sp
+
+from plasmacoll._profiling import PROFILE_TAGS
 
 __all__ = ["ChargeStateTransitions", "charge_state_fractions"]
 
@@ -114,6 +117,7 @@ class ChargeStateTransitions:
         return vector / vector.sum()
 
 
+@sp.profile("plasmacoll.charge_state_fractions", tags=PROFILE_TAGS)
 def charge_state_fractions(
     transitions: ChargeStateTransitions,
     line_density: Mapping[str, Sequence[float] | np.ndarray],

@@ -24,12 +24,15 @@ from typing import Any
 
 import cunumpy as xp
 import numpy as np
+import scope_profiler as sp
 
+from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll.markers import MarkerSet
 
 __all__ = ["merge_markers", "split_markers"]
 
 
+@sp.profile("plasmacoll.split_markers", tags=PROFILE_TAGS)
 def split_markers(markers: MarkerSet, max_weight: float) -> int:
     """Split every marker heavier than ``max_weight`` into equal lighter copies.
 
@@ -59,6 +62,7 @@ def split_markers(markers: MarkerSet, max_weight: float) -> int:
     return int(counts.sum()) - int(rows.shape[0])
 
 
+@sp.profile("plasmacoll.merge_markers", tags=PROFILE_TAGS)
 def merge_markers(
     markers: MarkerSet,
     target: int,

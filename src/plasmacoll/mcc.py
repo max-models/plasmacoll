@@ -73,7 +73,9 @@ from typing import Any, NamedTuple
 
 import cunumpy as xp
 import numpy as np
+import scope_profiler as sp
 
+from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll._types import Array
 from plasmacoll.background import NeutralBackground, is_dynamic
 from plasmacoll.constants import ELEMENTARY_CHARGE
@@ -321,6 +323,7 @@ class MonteCarloCollisions:
         self._warned_bound = False
         self._warned_probability = False
 
+    @sp.profile("plasmacoll.tabulate_bounds", tags=PROFILE_TAGS)
     def _tabulate_bounds(self) -> None:
         """Tabulate the collision-frequency bound of every species.
 
@@ -737,6 +740,7 @@ class MonteCarloCollisions:
             candidate_mask &= xp.asarray(alive, dtype=bool)
         return xp.where(candidate_mask)[0]
 
+    @sp.profile("plasmacoll.collide", tags=PROFILE_TAGS)
     def collide(
         self,
         species: str,
@@ -873,21 +877,23 @@ class MonteCarloCollisions:
             diagnostics.counts[process.name] = int(local.shape[0])
             if local.shape[0] == 0:
                 continue
-            self._collide_process(
-                species=species,
-                process=process,
-                marker_indices=candidates[local],
-                positions=positions,
-                velocities=velocities,
-                weights=weights,
-                neutral_velocities=neutral_stack[process_background[index]][local],
-                removed=removed,
-                created=created,
-                relative=relative_stack[index][local],
-                speed=speed_stack[index][local],
-            )
+            with sp.region("plasmacoll.collide_process", tags=PROFILE_TAGS):
+                self._collide_process(
+                    species=species,
+                    process=process,
+                    marker_indices=candidates[local],
+                    positions=positions,
+                    velocities=velocities,
+                    weights=weights,
+                    neutral_velocities=neutral_stack[process_background[index]][local],
+                    removed=removed,
+                    created=created,
+                    relative=relative_stack[index][local],
+                    speed=speed_stack[index][local],
+                )
         return MCCResult(velocities, removed, created, diagnostics)
 
+    @sp.profile("plasmacoll.collide_species", tags=PROFILE_TAGS)
     def collide_species(
         self,
         species: Mapping[str, MarkerSet],

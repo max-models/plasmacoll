@@ -5,6 +5,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.3.0] - 2026-10-21
 
+### Added
+
+- Opt-in scope-profiler regions around the collision operator, the reactor, marker merging and
+  splitting, rate coefficients, charge-state fractions and file reading, off unless the
+  `plasmacoll` tag is enabled (e.g. `scope_profiler.setup(enable_tags=["plasmacoll"])`). Adds the
+  `scope-profiler>=0.7.5` dependency.
+
 ### Changed
 
 - The combined coverage of the NumPy and the fake CuPy runs must be at least 95% (was 100%).

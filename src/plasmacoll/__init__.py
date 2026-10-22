@@ -21,6 +21,9 @@ Example:
     ... )
 """
 
+import scope_profiler as sp
+
+from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll.background import (
     DensityProfile,
     DynamicProfile,
@@ -57,6 +60,9 @@ from plasmacoll.vibrational import (
 )
 
 __version__ = "0.3.0"
+
+# The decorated functions pick the tag up, so registering after the imports is in time.
+sp.register_opt_in_tag(*PROFILE_TAGS)
 
 __all__ = [
     "ChargeStateTransitions",

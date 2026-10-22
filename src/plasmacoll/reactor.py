@@ -17,7 +17,9 @@ from dataclasses import dataclass, field
 
 import cunumpy as xp
 import numpy as np
+import scope_profiler as sp
 
+from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll.constants import ELEMENTARY_CHARGE
 from plasmacoll.markers import ParticleArrays
 from plasmacoll.mcc import MonteCarloCollisions
@@ -206,6 +208,7 @@ class ZeroDReactor:
         self._advance(dt)
         return self.state()
 
+    @sp.profile("plasmacoll.reactor_step", tags=PROFILE_TAGS)
     def _advance(self, dt: float) -> None:
         """Advance one step without computing the diagnostics of the state."""
         if any(self._electric_field):
@@ -225,6 +228,7 @@ class ZeroDReactor:
         self._iteration += 1
         self._time += dt
 
+    @sp.profile("plasmacoll.reactor_run", tags=PROFILE_TAGS)
     def run(self, dt: float, num_steps: int, every: int = 1) -> ReactorHistory:
         """Advance ``num_steps`` steps of ``dt`` (s).
 
