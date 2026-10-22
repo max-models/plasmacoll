@@ -34,9 +34,14 @@ homogeneous reactor, optionally in an electric field, for testing cross-section 
   those plugs in, and [cunumpy](https://pypi.org/project/cunumpy/) runs the same code on CPU
   (NumPy) or GPU (CuPy). Markers can be merged and split, conserving weight, momentum and
   energy.
+- **Boltzmann solver:** `solve_eedf` solves the two-term Boltzmann equation for electrons in a
+  DC field (Hagelaar and Pitchford, the method of BOLSIG+) for the same processes: the energy
+  distribution, mobility, diffusion and rate coefficients. `swarm_table` tabulates them against
+  the mean energy for fluid and global models.
 - **Validated:** a 0D reactor reproduces the closed-form relaxation, growth and decay rates of
   Maxwell-molecule gases, and the drift velocity and Wannier energy of a swarm in a field. The
-  tests run on NumPy and on a CuPy stand-in, with 100 % combined coverage.
+  Boltzmann solver reproduces the Maxwell and Druyvesteyn limits and published model-gas
+  results. The tests run on NumPy and on a CuPy stand-in, with 100 % combined coverage.
 
 Collisions between charged particles (Coulomb collisions, recombination) are out of scope: the
 collision partners are always neutral gases.

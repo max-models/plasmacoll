@@ -6,7 +6,9 @@ elastic and backscatter collisions, excitation, ionization, attachment,
 detachment, charge transfer and dissociation, with cross sections from tables,
 LXCat files or functions. It is the collision step of a particle-in-cell code,
 or with :class:`ZeroDReactor` a homogeneous reactor (optionally in an electric
-field) for testing cross-section sets.
+field) for testing cross-section sets. :func:`solve_eedf` solves the two-term
+Boltzmann equation for the same processes, for rates and transport
+coefficients consistent with them.
 
 Example:
     >>> import plasmacoll
@@ -30,6 +32,12 @@ from plasmacoll.background import (
     FunctionProfile,
     NeutralBackground,
     Profile,
+)
+from plasmacoll.boltzmann import (
+    BoltzmannSolution,
+    SwarmTable,
+    solve_eedf,
+    swarm_table,
 )
 from plasmacoll.charge_states import ChargeStateTransitions, charge_state_fractions
 from plasmacoll.cross_sections import (
@@ -67,6 +75,7 @@ sp.register_opt_in_tag(*PROFILE_TAGS)
 
 __all__ = [
     "RUDD_H2",
+    "BoltzmannSolution",
     "ChargeStateTransitions",
     "CollisionProcess",
     "CrossSection",
@@ -87,6 +96,7 @@ __all__ = [
     "ReactorState",
     "RuddIonization",
     "RuddShell",
+    "SwarmTable",
     "VibrationalDistribution",
     "ZeroDReactor",
     "boltzmann_level_populations",
@@ -100,5 +110,7 @@ __all__ = [
     "rate_coefficient",
     "read_lxcat",
     "scattering_cosine",
+    "solve_eedf",
     "split_markers",
+    "swarm_table",
 ]

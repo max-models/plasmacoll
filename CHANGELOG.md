@@ -11,6 +11,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   electrons of ionization by fast ions (Rev. Mod. Phys. 64, 441, 1992), its integrals over the
   secondary energy (`total`, `mean_energy`, `cross_section`) and any projectile mass at equal
   speed. `RUDD_H2`, the review's H2 parameters, reproduces its Table VII to 1%.
+- A two-term Boltzmann solver for electrons in a DC field, after Hagelaar and Pitchford (2005):
+  `solve_eedf` returns the energy distribution, mean energy, `mu N`, `D N`, the rate coefficient
+  of every process and `alpha / N` for the same `CollisionProcess` and `NeutralBackground`
+  objects the Monte Carlo collisions use, with temporal or spatial growth for ionization and
+  attachment. `swarm_table` tabulates the results against the mean energy for fluid and global
+  models. Checked against the Maxwell and Druyvesteyn limits, the Reid ramp and Lucas–Saelee
+  model gases and BOLOS.
+- `plasmacoll.constants.TOWNSEND`, 1 Td in V m².
 
 ## [0.3.0] - 2026-10-21
 
