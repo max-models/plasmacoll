@@ -100,5 +100,39 @@ eqs. (63) and (71) against E_CM while HYDHEL, with the same coefficients, uses a
 1 u (twice E_CM), and the prefactor of the attachment rate formula, eq. (125), is 2.95 times
 that of the Maxwellian average of eq. (124), so rates are computed from the cross sections.
 
-The report leaves out elastic collisions; the e–H₂ and e–H momentum-transfer cross sections come
-from elsewhere (e.g. LXCat).
+The report leaves out elastic collisions. `plasmacoll.hydrogen_elastic` has them for e + H and
+e + H₂: the closed-form fits of R. M. Park et al., "Anisotropic angular scattering models of
+elastic electron-neutral collisions for Monte Carlo plasma simulations", Plasma Sources Sci.
+Technol. 31, 065013 (2022) ([accepted manuscript](https://www.osti.gov/servlets/purl/2318946)),
+to the convergent close-coupling (CCC) calculations of the Curtin and Los Alamos groups. They
+give the integral elastic cross section (eq. (26), table II), a forward plus backward
+screened-Coulomb angular distribution (eqs. (17), (19), (20), table I) and from the two the
+momentum-transfer cross section in closed form (eqs. (28)–(30)), the one to use with isotropic
+scattering and in `solve_eedf`:
+
+```python
+from plasmacoll import CollisionProcess
+from plasmacoll.hydrogen_elastic import ELASTIC_FITS
+
+fit = ELASTIC_FITS["H2"]  # or "H"
+fit.momentum_transfer(2.0)  # m^2 at 2 eV
+elastic = CollisionProcess(
+    "elastic", "H2", fit.cross_section(), name="e_h2_elastic", energy_frame="lab"
+)
+```
+
+The fits reproduce the CCC data from 0.001 to 500 eV for H and from 0.1 to 250 eV for H₂. The
+tests check them against independent data:
+
+| Check                                                          | Reference                                   | Agreement             |
+| -------------------------------------------------------------- | ------------------------------------------- | --------------------- |
+| e + H₂ momentum transfer, 0.02–5 eV                            | England, Elford, Crompton 1988 (swarm)      | −5 to +10 %           |
+| e + H₂ integral and momentum transfer, 1–5 eV                  | Brunger et al. 1991 (beam, ±20 %)           | fit 3 to 15 % higher  |
+| e + H integral cross section, 0–1000 eV                        | CCC database (atom.curtin.edu.au)           | within 3 %            |
+| e + H momentum transfer at 0 eV, π(a_s² + 3a_t²)               | Schwartz 1961 scattering lengths            | fit 5 % higher        |
+
+Below 0.02 eV the H₂ fit exceeds the swarm value (by 23 % at zero energy, outside the CCC
+range). Above a few hundred eV the momentum-transfer cross section falls too slowly: for H it is
+2.2 times the first Born approximation at 1 keV, where inelastic collisions dominate anyway.
+The swarm-derived H₂ cross section is only reliable below 5 eV (Brunger et al. 1991): at 10 eV
+it is 7.6 Å² against 5.3 Å² from the CCC fit.

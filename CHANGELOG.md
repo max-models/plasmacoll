@@ -19,6 +19,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   for e + H₂ vibrational and electronic excitation, ionization and dissociative ionization,
   dissociative attachment over an H₂(v) population, e + H⁻ detachment, H⁺ + H⁻ mutual
   neutralization and H⁻ + H detachment, checked against the report and HYDHEL.
+- `plasmacoll.hydrogen_elastic`: the elastic e + H and e + H₂ cross sections of Park et al.
+  (Plasma Sources Sci. Technol. 31, 065013, 2022), closed-form fits to convergent close-coupling
+  calculations: the integral cross section, the forward/backward angular distribution and the
+  momentum-transfer cross section for isotropic scattering and `solve_eedf`. Checked against the
+  swarm-derived H₂ cross section of England et al. (1988), the beam data of Brunger et al. (1991)
+  and the CCC e + H database.
 - `RuddIonization` and `RuddShell`: Rudd's singly differential cross section for the secondary
   electrons of ionization by fast ions (Rev. Mod. Phys. 64, 441, 1992), its integrals over the
   secondary energy (`total`, `mean_energy`, `cross_section`) and any projectile mass at equal
