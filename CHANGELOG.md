@@ -7,6 +7,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A process kind `stripping` for the charge changes of a fast beam (H⁻ → H, H⁻ → H⁺, H → H⁺ and
+  the capture H⁺ → H): the incident marker moves to its product species at its own velocity, with
+  the released electrons at the projectile's velocity and the target ion of a capture as optional
+  products. `stripping_processes` builds these processes from a `ChargeStateTransitions`, so the
+  markers and `charge_state_fractions` use the same cross sections; over many markers the
+  populations follow the fractions along the path.
+
 - Argon and metal process sets for magnetron models (`plasmacoll.argon`, `plasmacoll.metals`):
   `argon_electron_processes` builds the electron-argon processes of a downloaded LXCat set,
   `argon_ion_processes` the isotropic and backscatter Ar+ + Ar processes from Phelps' 1994 or

@@ -24,6 +24,7 @@ isotropically, or with the process's [scattering model](#scattering-models).
 | `dissociative_attachment`  | $e + AB \to A^- + B$         | as attachment                                                                                               | `negative_ion`, optional `fragment`    |
 | `detachment`               | $A^- + B \to A + B + e$      | negative ion removed, electron emitted isotropically about $\mathbf V$ with $\tfrac12\mu g^2 - E_{th}$      | `electron`                             |
 | `charge_transfer`          | $A^+ + B \to A + B^+$        | incident removed; with an `ion` product, $B^+$ created at $\mathbf w$                                       | optional `ion`, `neutral`              |
+| `stripping`                | $H^- + B \to H + B + e$      | incident moved to the `projectile` species at its own velocity; electrons at that velocity, ion at $\mathbf w$ | `projectile`, optional `electron`, `ion` |
 
 `products` maps each role to a species name, for example
 `{"electron": "e", "ion": "Ar+"}`. Every species involved needs a mass in `species_masses`.
@@ -122,6 +123,42 @@ tables as input. See [negative-ion sources](/plasmacoll/guides/negative-ion-sour
 `plasmacoll.argon_electron_processes(lxcat_file)` turns a downloaded LXCat argon set into elastic,
 excitation and ionization processes, and `plasmacoll.argon_ion_processes()` returns Phelps'
 isotropic and backscatter Ar⁺ + Ar processes. See [argon and metals](/plasmacoll/guides/argon-and-metals/).
+
+## Charge changes of a fast beam
+
+A fast beam of negative ions, atoms and positive ions changes charge state on a gas or a plasma:
+single stripping $H^- \to H$, double stripping $H^- \to H^+$, ionization $H \to H^+$ and electron
+capture $H^+ \to H$. `ChargeStateTransitions` holds their cross sections per target, and
+`charge_state_fractions(transitions, {target: line_density})` integrates the fractions of each
+state along a path. The `stripping` kind does the same marker by marker: the incident marker moves
+to the species of its new state with its own velocity (the momentum transfer and the binding
+energies are negligible at beam energies), the released electrons, `charge_change` of them per
+event as one marker of that weight, move with the projectile's velocity, and a capture can leave
+the ionized target behind at the neutral's velocity. Momentum is conserved exactly when the
+incident mass is the product's plus the electrons'. `detachment`, in contrast, is for thermal
+negative ions: it drops the atom and emits the electron isotropically.
+
+`stripping_processes` builds the processes from the same `ChargeStateTransitions`, so the markers
+follow the fractions on average:
+
+```python
+transitions = plasmacoll.ChargeStateTransitions(
+    {"H2": {("-", "0"): 1.2e-20, ("-", "+"): 1.5e-21, ("0", "+"): 6e-21, ("+", "0"): 1e-21}}
+)
+processes = plasmacoll.stripping_processes(
+    transitions,
+    {"-": "H-", "0": "H", "+": "H+"},
+    electron="e",  # track the stripped electrons
+    ions={"H2": "H2+"},  # and the ions a capture leaves behind
+)
+```
+
+Each transition becomes a process `"<from>-><to>:<target>"` of the species of its initial
+state on the background named like the target (or as given in `backgrounds`), with the constant
+cross section looked up in the lab frame. Its collision frequency $n\sigma g$ equals the
+fractions' $n\sigma v$ where the beam is much faster than the target particles. The cross
+sections are inputs: the beam stripping data of hydrogen and deuterium (the ORNL "Redbook",
+IAEA/ALADDIN) are not shipped.
 
 ## Out of scope
 

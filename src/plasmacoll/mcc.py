@@ -45,6 +45,19 @@ process's ``scattering`` model about the incident direction:
     ``A- + B -> A + B + e``. The negative ion is removed and an electron is
     emitted isotropically in the centre-of-mass frame carrying the residual
     energy ``E - E_th``. The neutral fragments are not tracked.
+``stripping``
+    A fast projectile changes charge state, ``H- + B -> H + B + e``,
+    ``H + B -> H+ + B + e``, ``H- + B -> H+ + B + 2e`` or the capture
+    ``H+ + B -> H + B+``. The incident marker moves to its ``projectile``
+    product species at its own velocity: for a beam the momentum transfer and
+    the binding energies are negligible. The released electrons (the optional
+    ``electron`` product, one marker of ``charge_change`` times the weight)
+    move at the projectile's velocity, so momentum is conserved exactly when
+    the incident mass is the product's plus the electrons'. The optional
+    ``ion`` product, the ionized target, starts with the neutral's velocity.
+    :func:`~plasmacoll.charge_states.stripping_processes` builds these
+    processes from a :class:`~plasmacoll.charge_states.ChargeStateTransitions`,
+    so that the markers and the fractions use the same cross sections.
 
 Products take the position and weight of the incident marker, which conserves
 charge and particle number marker by marker, so markers may have any weights.
@@ -136,7 +149,7 @@ class MCCResult:
 
     Attributes:
         velocities: The velocities after the step (the input array if in place).
-        removed: Markers consumed by a collision (attachment, detachment,
+        removed: Markers consumed by a collision (attachment, detachment, stripping,
             charge transfer and their dissociative variants).
         created: New markers per product species, one batch per process.
         diagnostics: The collision counters.
@@ -608,6 +621,18 @@ class MonteCarloCollisions:
             removed[marker_indices] = True
             add_optional("ion", neutral_velocities)
             add_optional("neutral", velocity)
+        elif kind == "stripping":
+            removed[marker_indices] = True
+            add_product("projectile", xp.array(velocity, copy=True))
+            if "electron" in process.products:
+                created.setdefault(process.products["electron"], []).append(
+                    NewMarkers(
+                        xp.array(positions[marker_indices], copy=True),
+                        xp.array(velocity, copy=True),
+                        process.charge_change * weights[marker_indices],
+                    )
+                )
+            add_optional("ion", neutral_velocities)
         elif kind in ("attachment", "dissociative_attachment"):
             removed[marker_indices] = True
             add_product("negative_ion", xp.array(neutral_velocities, copy=True))
