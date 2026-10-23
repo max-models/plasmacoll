@@ -3,7 +3,7 @@
 plasmacoll collides markers (positions, velocities and weights in NumPy or CuPy
 arrays, through :mod:`cunumpy`) with prescribed Maxwellian neutral backgrounds:
 elastic and backscatter collisions, excitation, ionization, attachment,
-detachment, charge transfer and dissociation, with cross sections from tables,
+detachment, charge transfer, dissociation and the charge changes of fast beams, with cross sections from tables,
 LXCat files or functions (process sets for argon and sputtered metals in
 :mod:`plasmacoll.argon` and :mod:`plasmacoll.metals`). It is the collision step of a particle-in-cell code,
 or with :class:`ZeroDReactor` a homogeneous reactor (optionally in an electric
@@ -45,7 +45,11 @@ from plasmacoll.boltzmann import (
     solve_eedf,
     swarm_table,
 )
-from plasmacoll.charge_states import ChargeStateTransitions, charge_state_fractions
+from plasmacoll.charge_states import (
+    ChargeStateTransitions,
+    charge_state_fractions,
+    stripping_processes,
+)
 from plasmacoll.cross_sections import (
     CrossSection,
     LXCatProcess,
@@ -129,5 +133,6 @@ __all__ = [
     "scattering_cosine",
     "solve_eedf",
     "split_markers",
+    "stripping_processes",
     "swarm_table",
 ]

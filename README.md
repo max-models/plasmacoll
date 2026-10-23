@@ -18,10 +18,12 @@ optionally in an electric field, for testing cross-section sets.
 
 - **Processes:** elastic, backscatter (resonant charge exchange),
   excitation, ionization (electron and ion impact), attachment,
-  detachment, charge transfer, dissociation, dissociative attachment and
-  dissociative ionization. Isotropic or forward-peaked (Vahedi–Surendra,
-  Okhrimovskyy) scattering, and equal, uniform or Opal–Peterson–Beaty
-  energy sharing. Fast neutrals and fragments can be tracked as species.
+  detachment, charge transfer, dissociation, dissociative attachment,
+  dissociative ionization, and stripping and capture of a fast beam
+  (from the same cross sections as its charge-state fractions).
+  Isotropic or forward-peaked (Vahedi–Surendra, Okhrimovskyy)
+  scattering, and equal, uniform or Opal–Peterson–Beaty energy sharing.
+  Fast neutrals and fragments can be tracked as species.
 - **Neutral gases:** drifting Maxwellians with density and temperature
   profiles, replaceable between steps for gas heating or depletion.
 - **Cross sections:** from text tables, LXCat files (with `EFFECTIVE`
