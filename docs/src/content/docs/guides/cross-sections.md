@@ -67,7 +67,8 @@ their terms of use require, or use tables from the literature with `from_table`.
 and tests use synthetic tables and Maxwell molecules, and they say so wherever they appear.
 Published analytic fits are included where there is no set to download, or for convenience:
 Phelps' Ar⁺ + Ar cross sections and the Lotz ionization of metals, see
-[argon and metals](/plasmacoll/guides/argon-and-metals/).
+[argon and metals](/plasmacoll/guides/argon-and-metals/), and the hydrogen fits of Janev, Reiter and Samm (2003) in `plasmacoll.janev`, see
+[Negative-ion sources](/plasmacoll/guides/negative-ion-sources/#hydrogen-cross-sections).
 
 ## Maxwell molecules
 

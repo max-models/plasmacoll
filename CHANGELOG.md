@@ -15,6 +15,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   as LXCat does not allow redistribution.
 - `read_lxcat` reads the ion-neutral blocks of the LXCat Phelps database (kinds `ISOTROPIC` and
   `BACKSCAT`), which have no keyword line and were skipped before.
+- `plasmacoll.janev`: the hydrogen cross-section fits of Janev, Reiter and Samm (Jül-4105, 2003)
+  for e + H₂ vibrational and electronic excitation, ionization and dissociative ionization,
+  dissociative attachment over an H₂(v) population, e + H⁻ detachment, H⁺ + H⁻ mutual
+  neutralization and H⁻ + H detachment, checked against the report and HYDHEL.
 - A two-term Boltzmann solver for electrons in a DC field, after Hagelaar and Pitchford (2005):
   `solve_eedf` returns the energy distribution, mean energy, `mu N`, `D N`, the rate coefficient
   of every process and `alpha / N` for the same `CollisionProcess` and `NeutralBackground`

@@ -109,8 +109,10 @@ In a particle-in-cell code, call
 code](https://max-models.github.io/plasmacoll/guides/particle-in-cell/).
 
 plasmacoll does not ship tabulated cross-section data, only published
-analytic fits. Load tables from [LXCat](https://lxcat.net) or the
-literature with `plasmacoll.read_lxcat` and `CrossSection.from_table`.
+analytic fits, among them `plasmacoll.janev`, the openly published
+hydrogen fits of Janev, Reiter and Samm (2003). Load tables from
+[LXCat](https://lxcat.net) or the literature with
+`plasmacoll.read_lxcat` and `CrossSection.from_table`.
 
 ## Development
 
