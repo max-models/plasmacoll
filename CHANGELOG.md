@@ -7,6 +7,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Argon and metal process sets for magnetron models (`plasmacoll.argon`, `plasmacoll.metals`):
+  `argon_electron_processes` builds the electron-argon processes of a downloaded LXCat set,
+  `argon_ion_processes` the isotropic and backscatter Ar+ + Ar processes from Phelps' 1994 or
+  2005 fits or the LXCat Phelps database, and `metal_ionization_cross_section` and
+  `lotz_cross_section` the Lotz ionization of Cu, Ti and their ions. No LXCat data is included,
+  as LXCat does not allow redistribution.
+- `read_lxcat` reads the ion-neutral blocks of the LXCat Phelps database (kinds `ISOTROPIC` and
+  `BACKSCAT`), which have no keyword line and were skipped before.
 - `plasmacoll.janev`: the hydrogen cross-section fits of Janev, Reiter and Samm (Jül-4105, 2003)
   for e + H₂ vibrational and electronic excitation, ionization and dissociative ionization,
   dissociative attachment over an H₂(v) population, e + H⁻ detachment, H⁺ + H⁻ mutual

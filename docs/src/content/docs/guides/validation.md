@@ -2,7 +2,7 @@
 title: Validation
 description: The closed-form results the test suite checks the operator against.
 sidebar:
-  order: 6
+  order: 7
 ---
 
 Besides unit tests of every kind's kinematics (exact energy loss, energy sharing, isotropy,
