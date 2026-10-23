@@ -143,7 +143,14 @@ follow the fractions on average:
 
 ```python
 transitions = plasmacoll.ChargeStateTransitions(
-    {"H2": {("-", "0"): 1.2e-20, ("-", "+"): 1.5e-21, ("0", "+"): 6e-21, ("+", "0"): 1e-21}}
+    {
+        "H2": {
+            ("-", "0"): 1.2e-20,
+            ("-", "+"): 1.5e-21,
+            ("0", "+"): 6e-21,
+            ("+", "0"): 1e-21,
+        }
+    }
 )
 processes = plasmacoll.stripping_processes(
     transitions,
