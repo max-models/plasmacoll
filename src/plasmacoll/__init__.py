@@ -4,7 +4,8 @@ plasmacoll collides markers (positions, velocities and weights in NumPy or CuPy
 arrays, through :mod:`cunumpy`) with prescribed Maxwellian neutral backgrounds:
 elastic and backscatter collisions, excitation, ionization, attachment,
 detachment, charge transfer and dissociation, with cross sections from tables,
-LXCat files or functions. It is the collision step of a particle-in-cell code,
+LXCat files or functions (process sets for argon and sputtered metals in
+:mod:`plasmacoll.argon` and :mod:`plasmacoll.metals`). It is the collision step of a particle-in-cell code,
 or with :class:`ZeroDReactor` a homogeneous reactor (optionally in an electric
 field) for testing cross-section sets. :func:`solve_eedf` solves the two-term
 Boltzmann equation for the same processes, for rates and transport
@@ -26,6 +27,11 @@ Example:
 import scope_profiler as sp
 
 from plasmacoll._profiling import PROFILE_TAGS
+from plasmacoll.argon import (
+    argon_electron_processes,
+    argon_ion_cross_sections,
+    argon_ion_processes,
+)
 from plasmacoll.background import (
     DensityProfile,
     DynamicProfile,
@@ -57,6 +63,11 @@ from plasmacoll.mcc import (
     make_rng,
     scattering_cosine,
 )
+from plasmacoll.metals import (
+    LotzSubshell,
+    lotz_cross_section,
+    metal_ionization_cross_section,
+)
 from plasmacoll.population import merge_markers, split_markers
 from plasmacoll.process import CollisionProcess
 from plasmacoll.rates import RateTable, rate_coefficient
@@ -83,6 +94,7 @@ __all__ = [
     "DynamicProfile",
     "FunctionProfile",
     "LXCatProcess",
+    "LotzSubshell",
     "MCCDiagnostics",
     "MCCResult",
     "MarkerSet",
@@ -99,13 +111,18 @@ __all__ = [
     "SwarmTable",
     "VibrationalDistribution",
     "ZeroDReactor",
+    "argon_electron_processes",
+    "argon_ion_cross_sections",
+    "argon_ion_processes",
     "boltzmann_level_populations",
     "elastic_from_lxcat",
     "estimate_electronegativity",
     "find_lxcat_process",
+    "lotz_cross_section",
     "charge_state_fractions",
     "make_rng",
     "merge_markers",
+    "metal_ionization_cross_section",
     "proton_hydrogen_processes",
     "rate_coefficient",
     "read_lxcat",

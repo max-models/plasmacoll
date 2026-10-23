@@ -24,6 +24,7 @@ from plasmacoll._types import Array, PathLikeStr
 from plasmacoll.constants import ELEMENTARY_CHARGE
 
 __all__ = [
+    "LXCAT_ION_PROCESS_KINDS",
     "LXCAT_PROCESS_KINDS",
     "CrossSection",
     "LXCatProcess",
@@ -34,6 +35,9 @@ __all__ = [
 
 #: The process keywords an LXCat cross-section file can contain.
 LXCAT_PROCESS_KINDS = ("ELASTIC", "EFFECTIVE", "EXCITATION", "IONIZATION", "ATTACHMENT")
+#: The kinds of the ion-neutral blocks, which have no keyword line: the type at the
+#: end of their ``PROCESS`` line in capitals (``Ar+ + Ar -> , Backscat``).
+LXCAT_ION_PROCESS_KINDS = ("ISOTROPIC", "BACKSCAT")
 
 
 @dataclass(frozen=True)
@@ -365,12 +369,16 @@ class LXCatProcess:
     """One process block of an LXCat cross-section file.
 
     Attributes:
-        kind: The block keyword, one of :data:`LXCAT_PROCESS_KINDS`.
-        target: The left side of the reaction line, e.g. ``Ar``.
+        kind: The block keyword, one of :data:`LXCAT_PROCESS_KINDS`, or for an
+            ion-neutral block the type of its ``PROCESS`` line in capitals, e.g.
+            ``ISOTROPIC`` or ``BACKSCAT`` (:data:`LXCAT_ION_PROCESS_KINDS`).
+        target: The left side of the reaction line, e.g. ``Ar``; for an
+            ion-neutral block the neutral of its ``SPECIES`` line.
         product: The right side of the reaction line, e.g. ``Ar^+`` (empty if none).
         parameter: The mass ratio ``m_e/M`` for ``ELASTIC`` and ``EFFECTIVE``,
             the threshold in eV for ``EXCITATION`` and ``IONIZATION``, zero for
-            ``ATTACHMENT``.
+            ``ATTACHMENT``, and the ion-to-neutral mass ratio ``Mi/M`` of the
+            ``PARAM.`` line for an ion-neutral block (zero if it has none).
         cross_section: The table.
         comments: The ``KEY: value`` lines of the block, e.g. ``PROCESS``.
     """
@@ -404,6 +412,21 @@ def _split_reaction(target_line: str) -> tuple[str, str]:
     return target_line, ""
 
 
+def _ion_block_kind(comments: dict[str, str]) -> str:
+    """Return the kind of an ion-neutral block: the type of its ``PROCESS`` line."""
+    process = comments.get("PROCESS", "")
+    return process.rpartition(",")[2].strip().upper() or "UNKNOWN"
+
+
+def _mass_ratio_of(comments: dict[str, str]) -> float:
+    """Return ``Mi/M`` from a ``PARAM.`` line such as ``Mi = 39.948, Mi/M = 1``."""
+    for item in comments.get("PARAM.", "").split(","):
+        key, sep, value = item.partition("=")
+        if sep and key.strip() == "Mi/M":
+            return float(value)
+    return 0.0
+
+
 @sp.profile("plasmacoll.read_lxcat", tags=PROFILE_TAGS)
 def read_lxcat(path: PathLikeStr) -> list[LXCatProcess]:
     """Parse an LXCat cross-section file.
@@ -414,6 +437,12 @@ def read_lxcat(path: PathLikeStr) -> list[LXCatProcess]:
     momentum transfer, threshold in eV otherwise), optional ``KEY: value``
     comment lines, and a table of energy (eV) and cross section (m^2) framed
     by lines of dashes. Everything outside the blocks is skipped.
+
+    Ion-neutral blocks (the Phelps database's ``Ar+ + Ar`` data) have no
+    keyword, target or parameter line: they start at their ``SPECIES:`` line
+    (``Ar^+ / Ar``), and their kind is the type at the end of the ``PROCESS``
+    line (``ISOTROPIC`` or ``BACKSCAT``). LXCat tabulates them against the
+    centre-of-mass energy.
 
     Args:
         path: The file, as downloaded from https://lxcat.net.
@@ -426,16 +455,20 @@ def read_lxcat(path: PathLikeStr) -> list[LXCatProcess]:
     index = 0
     while index < len(lines):
         kind = lines[index].strip().upper()
-        if kind not in LXCAT_PROCESS_KINDS:
+        ion_block = lines[index].startswith("SPECIES:")
+        if kind not in LXCAT_PROCESS_KINDS and not ion_block:
             index += 1
             continue
-        target_line = lines[index + 1].strip()
-        index += 2
-        target, product = _split_reaction(target_line)
+        target_line = ""
+        target = product = ""
         parameter = 0.0
-        if kind != "ATTACHMENT":
-            parameter = float(lines[index].split()[0])
-            index += 1
+        if not ion_block:
+            target_line = lines[index + 1].strip()
+            index += 2
+            target, product = _split_reaction(target_line)
+            if kind != "ATTACHMENT":
+                parameter = float(lines[index].split()[0])
+                index += 1
         comments: dict[str, str] = {}
         while index < len(lines) and not lines[index].startswith("-----"):
             key, sep, value = lines[index].partition(":")
@@ -443,6 +476,11 @@ def read_lxcat(path: PathLikeStr) -> list[LXCatProcess]:
                 comments[key.strip()] = value.strip()
             index += 1
         index += 1
+        if ion_block:
+            kind = _ion_block_kind(comments)
+            target_line = comments.get("SPECIES", "")
+            target = target_line.rpartition("/")[2].strip()
+            parameter = _mass_ratio_of(comments)
         energies = []
         sigmas = []
         while index < len(lines) and not lines[index].startswith("-----"):

@@ -54,6 +54,51 @@ the vibrational kinetics. `estimate_electronegativity` turns the excited fractio
 order-of-magnitude $[\mathrm{H^-}]/[e]$ from the balance of attachment against detachment by H
 atoms (Kimura and Kasugai 2010, as given by Krištof et al. 2019).
 
-plasmacoll does not ship level-resolved attachment cross sections. Read them from tables with
-`CrossSection.from_table`. [Tutorial 5](/plasmacoll/tutorials/05-hydrogen-negative-ions/) runs the
-pipeline with synthetic levels.
+The level-resolved attachment cross sections of Janev, Reiter and Samm are in
+`plasmacoll.janev` (next section); other data are read with `CrossSection.from_table`.
+[Tutorial 5](/plasmacoll/tutorials/05-hydrogen-negative-ions/) runs the pipeline with synthetic
+levels.
+
+## Hydrogen cross sections
+
+`plasmacoll.janev` implements the analytic fits of R. K. Janev, D. Reiter and U. Samm,
+"Collision Processes in Low-Temperature Hydrogen Plasmas", Forschungszentrum Jülich report
+Jül-4105 (2003), [openly available](https://eirene.de/Documentation/report_4105.pdf), for the
+electron collisions with H₂ and the collisions of H⁻:
+
+| Keys                                                                | Reaction                         | Report              |
+| ------------------------------------------------------------------- | -------------------------------- | ------------------- |
+| `e_h2_vibrational_1`, `_2`                                          | e + H₂(v=0) → e + H₂(v=1, 2)     | eq. (74)            |
+| `e_h2_singlet_B`, `_Bprime`, `_Bdoubleprime`, `_C`, `_D`, `_Dprime` | e + H₂(X) → e + H₂(¹Σᵤ, ¹Πᵤ)     | eq. (80), table 15  |
+| `e_h2_singlet_EF`, `_HH`, `_GK`, `_I`                               | e + H₂(X) → e + H₂(¹Σ_g, ¹Π_g)   | eq. (81), table 16  |
+| `e_h2_triplet_a`, `_b`, `_c`, `_e`, `_d`                            | e + H₂(X) → e + H₂(³Λ) (b: → 2H) | eq. (95), table 22  |
+| `e_h2_ionization`                                                   | e + H₂ → 2e + H₂⁺                | eq. (106)           |
+| `e_h2_dissociative_ionization`                                      | e + H₂ → 2e + H⁺ + H             | eqs. (107a, b)      |
+| `dissociative_attachment(distribution)`                             | e + H₂(v) → H⁻ + H, v = 0..14    | eq. (124), table 27 |
+| `e_hminus_detachment`                                               | e + H⁻ → 2e + H                  | eq. (58)            |
+| `mutual_neutralization`                                             | H⁺ + H⁻ → H(n=2, 3) + H          | eq. (63), table 10  |
+| `hminus_h_associative_detachment`, `hminus_h_detachment`            | H⁻ + H → H₂ + e, → 2H + e        | eq. (71), table 11  |
+
+```python
+from plasmacoll.janev import JANEV_FITS, dissociative_attachment
+from plasmacoll.vibrational import VibrationalDistribution
+
+fit = JANEV_FITS["e_h2_singlet_B"]
+fit(50.0)  # m^2 at 50 eV
+table = fit.cross_section()  # a CrossSection with the threshold, for a process
+attachment = dissociative_attachment(
+    VibrationalDistribution.h2_ground_state_from_kelvin(5000.0)
+)
+```
+
+Electron collisions with H₂ are fitted against the electron energy (`energy_frame="lab"`), the
+collisions of H⁻ against the centre-of-mass energy. The polynomial fits of eqs. (63) and (71)
+hold from 0.1 eV to 20 keV; the tables keep their end values beyond. The tests check every fit
+against its equation evaluated by hand, against values printed in the report and in HYDHEL, and
+the Maxwellian rate coefficients against HYDHEL's rate fits. Two points to know: the report gives
+eqs. (63) and (71) against E_CM while HYDHEL, with the same coefficients, uses an energy scale of
+1 u (twice E_CM), and the prefactor of the attachment rate formula, eq. (125), is 2.95 times
+that of the Maxwellian average of eq. (124), so rates are computed from the cross sections.
+
+The report leaves out elastic collisions; the e–H₂ and e–H momentum-transfer cross sections come
+from elsewhere (e.g. LXCat).

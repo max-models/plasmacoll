@@ -32,6 +32,11 @@ its full `PROCESS` comment. For excitation and ionization blocks the threshold i
 parameter line; for elastic blocks the parameter is the mass ratio $m_e/M$
 (`LXCatProcess.mass_ratio`).
 
+The ion-neutral blocks of the Phelps database (`Ar+ + Ar`) have no keyword, target or parameter
+line. `read_lxcat` starts them at their `SPECIES:` line and takes the kind from the end of the
+`PROCESS` line: `ISOTROPIC` or `BACKSCAT`. The target is the neutral (`Ar`) and the parameter the
+mass ratio $M_i/M$. LXCat tabulates them against the centre-of-mass energy.
+
 ## Effective cross sections
 
 Many LXCat sets give an `EFFECTIVE` cross section instead of an `ELASTIC` one: the elastic
@@ -56,11 +61,16 @@ cross section instead.
 
 ## Data
 
-plasmacoll does not ship cross-section data. Download sets from [LXCat](https://lxcat.net) and cite
-the databases as their terms of use require, or use tables from the literature with
-`from_table`. The tutorials and tests use synthetic tables and Maxwell molecules, and they say
-so wherever they appear. The one exception is the H₂ parameter set of Rudd's model (below),
-published as fit parameters and checked in the tests against the review's own table.
+plasmacoll does not ship tabulated cross-section data: LXCat does not allow third parties to
+redistribute its data. Download sets from [LXCat](https://lxcat.net) and cite the databases as
+their terms of use require, or use tables from the literature with `from_table`. The tutorials
+and tests use synthetic tables and Maxwell molecules, and they say so wherever they appear.
+Published analytic fits are included where there is no set to download, or for convenience:
+Phelps' Ar⁺ + Ar cross sections and the Lotz ionization of metals, see
+[argon and metals](/plasmacoll/guides/argon-and-metals/), and the hydrogen fits of Janev, Reiter and Samm (2003) in `plasmacoll.janev`, see
+[Negative-ion sources](/plasmacoll/guides/negative-ion-sources/#hydrogen-cross-sections),
+and the H₂ parameters of Rudd's model (below), checked in the tests against the review's own
+table.
 
 ## Maxwell molecules
 
