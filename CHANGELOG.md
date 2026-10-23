@@ -19,6 +19,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   for e + H₂ vibrational and electronic excitation, ionization and dissociative ionization,
   dissociative attachment over an H₂(v) population, e + H⁻ detachment, H⁺ + H⁻ mutual
   neutralization and H⁻ + H detachment, checked against the report and HYDHEL.
+- `RuddIonization` and `RuddShell`: Rudd's singly differential cross section for the secondary
+  electrons of ionization by fast ions (Rev. Mod. Phys. 64, 441, 1992), its integrals over the
+  secondary energy (`total`, `mean_energy`, `cross_section`) and any projectile mass at equal
+  speed. `RUDD_H2`, the review's H2 parameters, reproduces its Table VII to 1%.
 - A two-term Boltzmann solver for electrons in a DC field, after Hagelaar and Pitchford (2005):
   `solve_eedf` returns the energy distribution, mean energy, `mu N`, `D N`, the rate coefficient
   of every process and `alpha / N` for the same `CollisionProcess` and `NeutralBackground`

@@ -72,6 +72,7 @@ from plasmacoll.population import merge_markers, split_markers
 from plasmacoll.process import CollisionProcess
 from plasmacoll.rates import RateTable, rate_coefficient
 from plasmacoll.reactor import ReactorHistory, ReactorState, ZeroDReactor
+from plasmacoll.secondaries import RUDD_H2, RuddIonization, RuddShell
 from plasmacoll.vibrational import (
     VibrationalDistribution,
     boltzmann_level_populations,
@@ -84,6 +85,7 @@ __version__ = "0.3.0"
 sp.register_opt_in_tag(*PROFILE_TAGS)
 
 __all__ = [
+    "RUDD_H2",
     "BoltzmannSolution",
     "ChargeStateTransitions",
     "CollisionProcess",
@@ -104,6 +106,8 @@ __all__ = [
     "RateTable",
     "ReactorHistory",
     "ReactorState",
+    "RuddIonization",
+    "RuddShell",
     "SwarmTable",
     "VibrationalDistribution",
     "ZeroDReactor",

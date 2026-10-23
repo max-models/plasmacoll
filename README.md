@@ -28,7 +28,8 @@ optionally in an electric field, for testing cross-section sets.
   sets converted to elastic, and the ion-neutral blocks of the Phelps
   database) or functions. Also Maxwell molecules for benchmarks, and
   population-weighted mixtures of level-resolved tables, e.g. H₂(v)
-  dissociative attachment.
+  dissociative attachment. Rudd’s energy distribution of the secondary
+  electrons of ionization by fast ions, with its H₂ parameters.
 - **Argon and metals:** electron-argon processes from a downloaded LXCat
   set, Phelps’ Ar⁺ + Ar fits, and Lotz ionization cross sections for
   sputtered Cu and Ti atoms and ions.
