@@ -32,6 +32,7 @@ from plasmacoll.argon import (
     argon_ion_cross_sections,
     argon_ion_processes,
 )
+from plasmacoll.atomic_hydrogen import hydrogen_atom_processes
 from plasmacoll.background import (
     DensityProfile,
     DynamicProfile,
@@ -74,7 +75,7 @@ from plasmacoll.metals import (
 )
 from plasmacoll.population import merge_markers, split_markers
 from plasmacoll.process import CollisionProcess
-from plasmacoll.rates import RateTable, rate_coefficient
+from plasmacoll.rates import RateTable, eedf_rate_coefficient, rate_coefficient
 from plasmacoll.reactor import ReactorHistory, ReactorState, ZeroDReactor
 from plasmacoll.secondaries import RUDD_H2, RuddIonization, RuddShell
 from plasmacoll.vibrational import (
@@ -119,9 +120,11 @@ __all__ = [
     "argon_ion_cross_sections",
     "argon_ion_processes",
     "boltzmann_level_populations",
+    "eedf_rate_coefficient",
     "elastic_from_lxcat",
     "estimate_electronegativity",
     "find_lxcat_process",
+    "hydrogen_atom_processes",
     "lotz_cross_section",
     "charge_state_fractions",
     "make_rng",

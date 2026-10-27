@@ -11,6 +11,12 @@ Cross sections tabulated against the incident particle's energy in the target's
 rest frame (``energy_frame="lab"``) are looked up at ``E m / mu`` instead, with
 ``m`` the incident mass. :class:`RateTable` tabulates ``K(T)`` once for models
 that need it at many temperatures, such as global (0D) and fluid models.
+
+For any other electron energy distribution, :func:`eedf_rate_coefficient`
+integrates ``k = gamma int eps sigma(eps) F0(eps) deps`` over a tabulated
+energy probability function ``F0`` (eV^-3/2, normalised by
+``int eps^1/2 F0 deps = 1``, the convention of :func:`~plasmacoll.solve_eedf`),
+with ``gamma = (2 e / m_e)^1/2``.
 """
 
 from __future__ import annotations
@@ -23,10 +29,10 @@ import scope_profiler as sp
 
 from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll._types import Array
-from plasmacoll.constants import ELEMENTARY_CHARGE
+from plasmacoll.constants import ELECTRON_MASS, ELEMENTARY_CHARGE
 from plasmacoll.cross_sections import CrossSection
 
-__all__ = ["RateTable", "rate_coefficient"]
+__all__ = ["RateTable", "eedf_rate_coefficient", "rate_coefficient"]
 
 #: Energies from ``_LOW`` to ``_HIGH`` times ``kT`` carry the Maxwellian integral.
 _LOW, _HIGH = 1.0e-6, 60.0
@@ -167,3 +173,93 @@ class RateTable:
         log_k = np.log(np.maximum(self.rate, tiny))
         value = np.exp(np.interp(np.log(t), log_t, log_k))
         return np.where(value <= tiny * 10, 0.0, value)
+
+
+def _interpolate_eepf(
+    energy: np.ndarray, grid: np.ndarray, f0: np.ndarray
+) -> np.ndarray:
+    """``F0`` at ``energy`` per row, linear in ``log F0`` where both ends are positive."""
+    out = np.empty((f0.shape[0], energy.size))
+    tiny = np.finfo(float).tiny
+    for k, row in enumerate(f0):
+        linear = np.interp(energy, grid, row, right=0.0)
+        logged = np.exp(
+            np.interp(energy, grid, np.log(np.maximum(row, tiny)), right=-np.inf)
+        )
+        positive = np.interp(energy, grid, (row > 0.0).astype(float), right=0.0) >= 1.0
+        out[k] = np.where(positive, logged, linear)
+    return out
+
+
+@sp.profile("plasmacoll.eedf_rate_coefficient", tags=PROFILE_TAGS)
+def eedf_rate_coefficient(
+    cross_section: CrossSection,
+    energy: Array,
+    eepf: Array,
+    *,
+    mass: float = ELECTRON_MASS,
+    normalise: bool = True,
+    refine: int = 4,
+) -> np.ndarray:
+    """Return ``k = (2 e / m)^1/2 int eps sigma(eps) F0(eps) deps`` in m^3/s.
+
+    ``F0`` is the energy probability function in eV^-3/2 on the grid ``energy``
+    (eV). Between the grid points ``log F0`` is interpolated linearly (``F0``
+    itself where it is zero), and the integral runs over the grid, the
+    cross section's own table energies and its threshold, each interval cut
+    into ``refine`` pieces. Beyond the last grid energy ``F0`` is taken as zero,
+    so the grid must reach the tail that matters for the threshold. The
+    cross section is looked up at the electron energy (the lab frame of
+    electron-impact data).
+
+    Args:
+        cross_section: The cross section against energy (eV).
+        energy: The energies of ``eepf`` in eV, increasing, ``>= 0``. A last
+            axis of several distributions is allowed: ``eepf`` of shape
+            ``(..., len(energy))``.
+        eepf: ``F0`` in eV^-3/2, non-negative.
+        mass: The mass of the incident particle in kg.
+        normalise: Divide by ``int eps^1/2 F0 deps`` on the same quadrature, so
+            that a distribution normalised only approximately gives a rate per
+            particle.
+        refine: Sub-intervals per interval of the merged grid.
+
+    Returns:
+        The rate coefficients, of the shape of ``eepf`` without its last axis.
+    """
+    grid = np.asarray(xp.to_numpy(xp.asarray(energy)), dtype=float)
+    f0 = np.asarray(xp.to_numpy(xp.asarray(eepf)), dtype=float)
+    if grid.ndim != 1 or grid.size < 2 or np.any(np.diff(grid) <= 0.0):
+        raise ValueError("energy must be a 1D increasing grid of at least two points")
+    if grid[0] < 0.0:
+        raise ValueError("energy must be >= 0")
+    if f0.shape[-1] != grid.size:
+        raise ValueError("the last axis of eepf must match energy")
+    if np.any(f0 < 0.0):
+        raise ValueError("eepf must be non-negative")
+    if mass <= 0.0 or refine < 1:
+        raise ValueError("need mass > 0 and refine >= 1")
+    table = np.asarray(xp.to_numpy(cross_section.energy), dtype=float)
+    threshold = cross_section.threshold
+    extra = table[(table > grid[0]) & (table < grid[-1])]
+    nodes = np.unique(
+        np.concatenate(
+            [grid, extra, [threshold] if grid[0] < threshold < grid[-1] else []]
+        )
+    )
+    steps = np.arange(refine) / refine
+    fine = np.append(
+        (nodes[:-1, None] + np.diff(nodes)[:, None] * steps).ravel(), nodes[-1]
+    )
+    f_fine = _interpolate_eepf(fine, grid, f0.reshape(-1, grid.size))
+    sigma = np.asarray(xp.to_numpy(cross_section(fine)), dtype=float)
+    # integrate from the threshold, where sigma may jump
+    sigma = np.where(fine >= threshold, sigma, 0.0)
+    gamma = np.sqrt(2.0 * ELEMENTARY_CHARGE / mass)
+    rate = gamma * np.trapezoid(fine * sigma * f_fine, fine, axis=-1)
+    if normalise:
+        norm = np.trapezoid(np.sqrt(fine) * f_fine, fine, axis=-1)
+        if np.any(norm <= 0.0):
+            raise ValueError("eepf is zero everywhere")
+        rate = rate / norm
+    return rate.reshape(f0.shape[:-1])

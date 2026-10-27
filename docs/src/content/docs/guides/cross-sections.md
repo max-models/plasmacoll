@@ -69,10 +69,20 @@ Published analytic fits are included where there is no set to download, or for c
 Phelps' Ar⁺ + Ar cross sections and the Lotz ionization of metals, see
 [argon and metals](/plasmacoll/guides/argon-and-metals/), the hydrogen fits of Janev, Reiter
 and Samm (2003) in `plasmacoll.janev` and the elastic e + H and e + H₂ fits of Park et al. (2022)
-in `plasmacoll.hydrogen_elastic`, see
+in `plasmacoll.hydrogen_elastic`, the electron excitation and ionization of atomic hydrogen
+H(n) between any principal quantum numbers (the same report, section 2.1, with Johnson's 1972
+formulas where it has no fit) in `plasmacoll.atomic_hydrogen`, see
 [Negative-ion sources](/plasmacoll/guides/negative-ion-sources/#hydrogen-cross-sections),
 and the H₂ parameters of Rudd's model (below), checked in the tests against the review's own
 table.
+
+## Rates from any energy distribution
+
+`rate_coefficient` averages over a Maxwellian. For any other distribution, such as the one of
+`solve_eedf` or one measured by a probe, `eedf_rate_coefficient(cross_section, energy, eepf)`
+integrates $k = (2e/m_e)^{1/2}\int \varepsilon\,\sigma(\varepsilon)\,F_0(\varepsilon)\,d\varepsilon$
+over the tabulated energy probability function $F_0$ (eV$^{-3/2}$, normalised by
+$\int \varepsilon^{1/2} F_0\,d\varepsilon = 1$), and accepts several distributions at once.
 
 ## Maxwell molecules
 
