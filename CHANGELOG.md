@@ -7,6 +7,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `plasmacoll.atomic_hydrogen`: electron excitation `n -> m` and ionization of H(n) for any
+  principal quantum numbers, from Janev, Reiter and Samm (2003), section 2.1, and Johnson's
+  (1972) formulas; Johnson's oscillator strengths; `hydrogen_atom_processes` for the MCC.
+- `eedf_rate_coefficient`: rate coefficients over any tabulated electron energy distribution.
 - A process kind `stripping` for the charge changes of a fast beam (H⁻ → H, H⁻ → H⁺, H → H⁺ and
   the capture H⁺ → H): the incident marker moves to its product species at its own velocity, with
   the released electrons at the projectile's velocity and the target ion of a capture as optional
