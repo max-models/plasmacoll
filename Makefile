@@ -27,9 +27,10 @@ coverage:  ## coverage of the NumPy and the fake CuPy runs combined, which must 
 	uv run coverage combine -q
 	uv run coverage report --fail-under=95
 
-lint:  ## ruff, pyright and ty
+lint:  ## ruff, ssort, pyright and ty
 	uv run ruff check .
 	uv run ruff format --check .
+	uvx ssort --check --diff .
 	uv run pyright src/
 	uv run ty check
 

@@ -101,6 +101,15 @@ class ReactorHistory:
         )
 
 
+def _mean_velocity(markers: ParticleArrays) -> np.ndarray:
+    """Return the weighted mean velocity of ``markers`` (zero if empty) on the host."""
+    total = markers.total_weight
+    if total <= 0.0:
+        return np.zeros(3)
+    mean = xp.sum(markers.weights[:, None] * markers.velocities, axis=0) / total
+    return np.asarray(xp.to_numpy(mean), dtype=float)
+
+
 class ZeroDReactor:
     """A homogeneous reactor of volume ``volume`` advanced by collisions and a field.
 
@@ -199,15 +208,6 @@ class ZeroDReactor:
             },
         )
 
-    def step(self, dt: float) -> ReactorState:
-        """Accelerate, collide and (if needed) merge every species for ``dt`` (s).
-
-        Returns:
-            The state after the step.
-        """
-        self._advance(dt)
-        return self.state()
-
     @sp.profile("plasmacoll.reactor_step", tags=PROFILE_TAGS)
     def _advance(self, dt: float) -> None:
         """Advance one step without computing the diagnostics of the state."""
@@ -227,6 +227,15 @@ class ZeroDReactor:
                 merge_markers(self._species[name], limit // 2, rng=self._merge_rng)
         self._iteration += 1
         self._time += dt
+
+    def step(self, dt: float) -> ReactorState:
+        """Accelerate, collide and (if needed) merge every species for ``dt`` (s).
+
+        Returns:
+            The state after the step.
+        """
+        self._advance(dt)
+        return self.state()
 
     @sp.profile("plasmacoll.reactor_run", tags=PROFILE_TAGS)
     def run(self, dt: float, num_steps: int, every: int = 1) -> ReactorHistory:
@@ -278,12 +287,3 @@ class ZeroDReactor:
     def electric_field(self) -> tuple[float, float, float]:
         """Return the electric field in V/m."""
         return self._electric_field
-
-
-def _mean_velocity(markers: ParticleArrays) -> np.ndarray:
-    """Return the weighted mean velocity of ``markers`` (zero if empty) on the host."""
-    total = markers.total_weight
-    if total <= 0.0:
-        return np.zeros(3)
-    mean = xp.sum(markers.weights[:, None] * markers.velocities, axis=0) / total
-    return np.asarray(xp.to_numpy(mean), dtype=float)

@@ -62,6 +62,16 @@ def split_markers(markers: MarkerSet, max_weight: float) -> int:
     return int(counts.sum()) - int(rows.shape[0])
 
 
+def _random_directions(rng: Any, num: int) -> np.ndarray:
+    """Return ``num`` host unit vectors distributed uniformly on the sphere."""
+    cos_theta = 1.0 - 2.0 * rng.random(num)
+    sin_theta = np.sqrt(np.clip(1.0 - cos_theta**2, 0.0, None))
+    phi = 2.0 * np.pi * rng.random(num)
+    return np.stack(
+        (sin_theta * np.cos(phi), sin_theta * np.sin(phi), cos_theta), axis=1
+    )
+
+
 @sp.profile("plasmacoll.merge_markers", tags=PROFILE_TAGS)
 def merge_markers(
     markers: MarkerSet,
@@ -173,13 +183,3 @@ def merge_markers(
         xp.asarray(np.concatenate([0.5 * total, 0.5 * total])),
     )
     return int(members.shape[0]) - 2 * num_groups
-
-
-def _random_directions(rng: Any, num: int) -> np.ndarray:
-    """Return ``num`` host unit vectors distributed uniformly on the sphere."""
-    cos_theta = 1.0 - 2.0 * rng.random(num)
-    sin_theta = np.sqrt(np.clip(1.0 - cos_theta**2, 0.0, None))
-    phi = 2.0 * np.pi * rng.random(num)
-    return np.stack(
-        (sin_theta * np.cos(phi), sin_theta * np.sin(phi), cos_theta), axis=1
-    )
