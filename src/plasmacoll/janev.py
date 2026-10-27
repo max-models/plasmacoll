@@ -135,16 +135,6 @@ class HydrogenFit:
     valid_from: float = 0.0
     valid_to: float = math.inf
 
-    def __call__(self, energy: Array | float) -> np.ndarray:
-        """Return the fit in m^2 at ``energy`` (eV), zero at and below the threshold."""
-        energy = np.asarray(energy, dtype=float)
-        above = energy > self.threshold
-        # evaluate above the threshold only (the fits are singular or complex below),
-        # with the end values beyond the range of validity, as the table has them
-        lower = max(self.valid_from, self.threshold * (1.0 + 1.0e-12), 1.0e-12)
-        safe = np.clip(np.where(above, energy, lower), lower, self.valid_to)
-        return np.where(above, self.function(safe), 0.0)
-
     @property
     def label(self) -> str:
         """The reaction and its source, for plots and messages."""
@@ -169,6 +159,16 @@ class HydrogenFit:
         return CrossSection(
             energy=energy, sigma=sigma, threshold=self.threshold, label=self.label
         )
+
+    def __call__(self, energy: Array | float) -> np.ndarray:
+        """Return the fit in m^2 at ``energy`` (eV), zero at and below the threshold."""
+        energy = np.asarray(energy, dtype=float)
+        above = energy > self.threshold
+        # evaluate above the threshold only (the fits are singular or complex below),
+        # with the end values beyond the range of validity, as the table has them
+        lower = max(self.valid_from, self.threshold * (1.0 + 1.0e-12), 1.0e-12)
+        safe = np.clip(np.where(above, energy, lower), lower, self.valid_to)
+        return np.where(above, self.function(safe), 0.0)
 
 
 # --------------------------------------------------------------------------- #

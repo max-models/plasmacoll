@@ -128,10 +128,6 @@ class ParticleArrays:
         )
         return cls(xp.zeros((num, ndim)), velocities, xp.full(num, float(weight)))
 
-    def __len__(self) -> int:
-        """Return the number of markers."""
-        return int(self.weights.shape[0])
-
     def remove(self, mask: Array) -> None:
         """Remove the markers flagged in the boolean ``mask``."""
         keep = ~xp.asarray(mask, dtype=bool)
@@ -167,3 +163,7 @@ class ParticleArrays:
         mean = xp.sum(weights * self.velocities, axis=0) / total
         spread = xp.sum(weights * (self.velocities - mean) ** 2) / total
         return mass * float(spread) / (3.0 * ELEMENTARY_CHARGE)
+
+    def __len__(self) -> int:
+        """Return the number of markers."""
+        return int(self.weights.shape[0])

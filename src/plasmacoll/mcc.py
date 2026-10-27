@@ -288,6 +288,106 @@ class MonteCarloCollisions:
         KeyError: If a species, background or product has no definition.
     """
 
+    def _is_dynamic(self, background: str) -> bool:
+        return is_dynamic(self._backgrounds[background].profile)
+
+    # ------------------------------------------------------------------ #
+    # Collision frequencies
+    # ------------------------------------------------------------------ #
+    def _reduced_mass(self, species: str, process: CollisionProcess) -> float:
+        """Return the reduced mass of the incident and background particles."""
+        mass = self._masses[species]
+        neutral_mass = self._backgrounds[process.background].mass
+        return mass * neutral_mass / (mass + neutral_mass)
+
+    def _energy_mass(self, species: str, process: CollisionProcess) -> float:
+        """Return the mass entering the cross-section lookup energy."""
+        if process.energy_frame == "lab":
+            return self._masses[species]
+        return self._reduced_mass(species, process)
+
+    def _speed_of(self, species: str, process: CollisionProcess, energy: Any) -> Any:
+        """Return the relative speed (m/s) at lookup energy ``energy`` (eV)."""
+        return np.sqrt(
+            2.0 * energy * ELEMENTARY_CHARGE / self._energy_mass(species, process)
+        )
+
+    def _frequency_of(
+        self,
+        species: str,
+        processes: Sequence[CollisionProcess],
+        relative_speed: Array,
+        density_factor: float | None,
+    ) -> Array:
+        """The summed frequency of ``processes`` (1/s) at relative speeds ``g``."""
+        total = xp.zeros_like(xp.asarray(relative_speed, dtype=float))
+        for process in processes:
+            total = total + self.process_frequency(
+                species, process, relative_speed, density_factor
+            )
+        return total
+
+    def _running_frequency_bound(
+        self,
+        species: str,
+        processes: Sequence[CollisionProcess],
+        density_factor: float | None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Tabulate the running maximum of the frequency of ``processes`` over speed.
+
+        The frequency is evaluated on a dense logarithmic speed grid merged
+        with the speeds of every table point and threshold, which resolves the
+        local maxima of a piecewise-linear cross section times the speed.
+        ``density_factor`` scales the reference densities (None: each
+        background's largest). Returns host arrays ``(speeds, running_max)``.
+        """
+        if not processes:
+            return np.zeros(1), np.zeros(1)
+        cap = max(
+            float(self._speed_of(species, p, p.cross_section.max_energy))
+            for p in processes
+        )
+        grids = [np.geomspace(cap * 1e-8, cap, self._num_bound_samples)]
+        for process in processes:
+            energies = np.asarray(xp.to_numpy(process.cross_section.energy))
+            grids.append(self._speed_of(species, process, energies))
+            if process.cross_section.threshold > 0.0:
+                threshold_speed = self._speed_of(
+                    species, process, process.cross_section.threshold
+                )
+                grids.append(np.asarray([threshold_speed * (1.0 + 1e-12)]))
+        speeds = np.unique(np.concatenate(grids))
+        frequencies = xp.to_numpy(
+            self._frequency_of(species, processes, xp.asarray(speeds), density_factor)
+        )
+        return speeds, np.maximum.accumulate(frequencies)
+
+    @sp.profile("plasmacoll.tabulate_bounds", tags=PROFILE_TAGS)
+    def _tabulate_bounds(self) -> None:
+        """Tabulate the collision-frequency bound of every species.
+
+        The processes on backgrounds with a fixed profile share one table at
+        their largest density. Each background with a
+        :class:`~plasmacoll.background.DynamicProfile` gets a table of its own
+        at the reference density, scaled by the profile's current
+        ``max_factor`` in :meth:`frequency_bound`, so the bound follows the
+        profile without being tabulated again.
+        """
+        self._frequency_tables = {}
+        for species, processes in self._processes.items():
+            static = [p for p in processes if not self._is_dynamic(p.background)]
+            dynamic: dict[str, list[CollisionProcess]] = {}
+            for process in processes:
+                if self._is_dynamic(process.background):
+                    dynamic.setdefault(process.background, []).append(process)
+            self._frequency_tables[species] = (
+                (static, self._running_frequency_bound(species, static, None)),
+                {
+                    name: (group, self._running_frequency_bound(species, group, 1.0))
+                    for name, group in dynamic.items()
+                },
+            )
+
     def __init__(
         self,
         species_masses: Mapping[str, float],
@@ -336,35 +436,6 @@ class MonteCarloCollisions:
         self._warned_bound = False
         self._warned_probability = False
 
-    @sp.profile("plasmacoll.tabulate_bounds", tags=PROFILE_TAGS)
-    def _tabulate_bounds(self) -> None:
-        """Tabulate the collision-frequency bound of every species.
-
-        The processes on backgrounds with a fixed profile share one table at
-        their largest density. Each background with a
-        :class:`~plasmacoll.background.DynamicProfile` gets a table of its own
-        at the reference density, scaled by the profile's current
-        ``max_factor`` in :meth:`frequency_bound`, so the bound follows the
-        profile without being tabulated again.
-        """
-        self._frequency_tables = {}
-        for species, processes in self._processes.items():
-            static = [p for p in processes if not self._is_dynamic(p.background)]
-            dynamic: dict[str, list[CollisionProcess]] = {}
-            for process in processes:
-                if self._is_dynamic(process.background):
-                    dynamic.setdefault(process.background, []).append(process)
-            self._frequency_tables[species] = (
-                (static, self._running_frequency_bound(species, static, None)),
-                {
-                    name: (group, self._running_frequency_bound(species, group, 1.0))
-                    for name, group in dynamic.items()
-                },
-            )
-
-    def _is_dynamic(self, background: str) -> bool:
-        return is_dynamic(self._backgrounds[background].profile)
-
     def set_background(self, background: NeutralBackground) -> None:
         """Replace the background of the same name, e.g. after gas heating or depletion.
 
@@ -378,77 +449,6 @@ class MonteCarloCollisions:
             raise KeyError(f"No background {background.name!r} to replace")
         self._backgrounds[background.name] = background
         self._tabulate_bounds()
-
-    # ------------------------------------------------------------------ #
-    # Collision frequencies
-    # ------------------------------------------------------------------ #
-    def _reduced_mass(self, species: str, process: CollisionProcess) -> float:
-        """Return the reduced mass of the incident and background particles."""
-        mass = self._masses[species]
-        neutral_mass = self._backgrounds[process.background].mass
-        return mass * neutral_mass / (mass + neutral_mass)
-
-    def _energy_mass(self, species: str, process: CollisionProcess) -> float:
-        """Return the mass entering the cross-section lookup energy."""
-        if process.energy_frame == "lab":
-            return self._masses[species]
-        return self._reduced_mass(species, process)
-
-    def _speed_of(self, species: str, process: CollisionProcess, energy: Any) -> Any:
-        """Return the relative speed (m/s) at lookup energy ``energy`` (eV)."""
-        return np.sqrt(
-            2.0 * energy * ELEMENTARY_CHARGE / self._energy_mass(species, process)
-        )
-
-    def _running_frequency_bound(
-        self,
-        species: str,
-        processes: Sequence[CollisionProcess],
-        density_factor: float | None,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Tabulate the running maximum of the frequency of ``processes`` over speed.
-
-        The frequency is evaluated on a dense logarithmic speed grid merged
-        with the speeds of every table point and threshold, which resolves the
-        local maxima of a piecewise-linear cross section times the speed.
-        ``density_factor`` scales the reference densities (None: each
-        background's largest). Returns host arrays ``(speeds, running_max)``.
-        """
-        if not processes:
-            return np.zeros(1), np.zeros(1)
-        cap = max(
-            float(self._speed_of(species, p, p.cross_section.max_energy))
-            for p in processes
-        )
-        grids = [np.geomspace(cap * 1e-8, cap, self._num_bound_samples)]
-        for process in processes:
-            energies = np.asarray(xp.to_numpy(process.cross_section.energy))
-            grids.append(self._speed_of(species, process, energies))
-            if process.cross_section.threshold > 0.0:
-                threshold_speed = self._speed_of(
-                    species, process, process.cross_section.threshold
-                )
-                grids.append(np.asarray([threshold_speed * (1.0 + 1e-12)]))
-        speeds = np.unique(np.concatenate(grids))
-        frequencies = xp.to_numpy(
-            self._frequency_of(species, processes, xp.asarray(speeds), density_factor)
-        )
-        return speeds, np.maximum.accumulate(frequencies)
-
-    def _frequency_of(
-        self,
-        species: str,
-        processes: Sequence[CollisionProcess],
-        relative_speed: Array,
-        density_factor: float | None,
-    ) -> Array:
-        """The summed frequency of ``processes`` (1/s) at relative speeds ``g``."""
-        total = xp.zeros_like(xp.asarray(relative_speed, dtype=float))
-        for process in processes:
-            total = total + self.process_frequency(
-                species, process, relative_speed, density_factor
-            )
-        return total
 
     def process_frequency(
         self,
@@ -515,6 +515,94 @@ class MonteCarloCollisions:
             if factor > 0.0:
                 bound += factor * table_bound(processes, dynamic_table, 1.0)
         return self._bound_safety * bound
+
+    def _secondary_fraction(self, process: CollisionProcess, residual: Array) -> Array:
+        """Return the fraction of the residual energy (J) the secondary electron gets."""
+        num = int(residual.shape[0])
+        if process.energy_sharing == "equal":
+            return xp.full(num, 0.5)
+        if process.energy_sharing == "uniform":
+            return self._rng.random(num)
+        # Opal-Peterson-Beaty: the secondary energy E_s in [0, residual / 2] has
+        # the density 1 / (1 + (E_s / w)^2), sampled by inverting its integral.
+        width = float(process.sharing_energy or 0.0) * ELEMENTARY_CHARGE
+        secondary = width * xp.tan(
+            self._rng.random(num) * xp.arctan(residual / (2.0 * width))
+        )
+        return xp.where(
+            residual > 0.0, secondary / xp.where(residual > 0.0, residual, 1.0), 0.0
+        )
+
+    def _electron_impact_ionization(
+        self,
+        process: CollisionProcess,
+        marker_indices: Array,
+        velocities: Array,
+        neutral_velocities: Array,
+        speed: Array,
+        directions: Any,
+        add_product: Any,
+    ) -> None:
+        """``e + A -> 2e + A+``: share ``E - E_iz`` between the two electrons."""
+        mass = self._masses[process.products["electron"]]
+        energy = 0.5 * mass * speed**2
+        residual = xp.clip(energy - process.loss * ELEMENTARY_CHARGE, 0.0, None)
+        fraction = self._secondary_fraction(process, residual)
+        primary_energy = (1.0 - fraction) * residual
+        secondary_energy = fraction * residual
+        primary_speed = xp.sqrt(2.0 * primary_energy / mass)
+        secondary_speed = xp.sqrt(2.0 * secondary_energy / mass)
+        velocities[marker_indices] = neutral_velocities + primary_speed[
+            :, None
+        ] * directions(primary_energy / ELEMENTARY_CHARGE)
+        add_product(
+            "electron",
+            neutral_velocities
+            + secondary_speed[:, None]
+            * directions(secondary_energy / ELEMENTARY_CHARGE),
+        )
+
+    def _ion_impact_ionization(
+        self,
+        process: CollisionProcess,
+        marker_indices: Array,
+        velocities: Array,
+        neutral_velocities: Array,
+        center_of_mass: Array,
+        incident_direction: Array,
+        speed: Array,
+        mass: float,
+        neutral_mass: float,
+        add_product: Any,
+    ) -> None:
+        """``A+ + B -> A+ + B+ + e``: the electron takes its share of ``E_cm - E_iz``.
+
+        The incident and the target ion separate along the incident direction
+        in the centre-of-mass frame with the remaining energy, and the electron
+        is emitted isotropically from the centre of mass. Energy and momentum
+        are conserved up to the electron's momentum, O(sqrt(m_e / M)).
+        """
+        num = int(marker_indices.shape[0])
+        electron_mass = self._masses[process.products["electron"]]
+        total_mass = mass + neutral_mass
+        reduced_mass = mass * neutral_mass / total_mass
+        energy = 0.5 * reduced_mass * speed**2
+        residual = xp.clip(energy - process.loss * ELEMENTARY_CHARGE, 0.0, None)
+        secondary_energy = self._secondary_fraction(process, residual) * residual
+        new_relative = (
+            xp.sqrt(2.0 * (residual - secondary_energy) / reduced_mass)[:, None]
+            * incident_direction
+        )
+        velocities[marker_indices] = (
+            center_of_mass + (neutral_mass / total_mass) * new_relative
+        )
+        add_product("ion", center_of_mass - (mass / total_mass) * new_relative)
+        secondary_speed = xp.sqrt(2.0 * secondary_energy / electron_mass)
+        add_product(
+            "electron",
+            center_of_mass
+            + secondary_speed[:, None] * _isotropic_directions(self._rng, num),
+        )
 
     # ------------------------------------------------------------------ #
     # Kinematics
@@ -647,94 +735,6 @@ class MonteCarloCollisions:
                 center_of_mass
                 + electron_speed[:, None] * _isotropic_directions(self._rng, num),
             )
-
-    def _secondary_fraction(self, process: CollisionProcess, residual: Array) -> Array:
-        """Return the fraction of the residual energy (J) the secondary electron gets."""
-        num = int(residual.shape[0])
-        if process.energy_sharing == "equal":
-            return xp.full(num, 0.5)
-        if process.energy_sharing == "uniform":
-            return self._rng.random(num)
-        # Opal-Peterson-Beaty: the secondary energy E_s in [0, residual / 2] has
-        # the density 1 / (1 + (E_s / w)^2), sampled by inverting its integral.
-        width = float(process.sharing_energy or 0.0) * ELEMENTARY_CHARGE
-        secondary = width * xp.tan(
-            self._rng.random(num) * xp.arctan(residual / (2.0 * width))
-        )
-        return xp.where(
-            residual > 0.0, secondary / xp.where(residual > 0.0, residual, 1.0), 0.0
-        )
-
-    def _electron_impact_ionization(
-        self,
-        process: CollisionProcess,
-        marker_indices: Array,
-        velocities: Array,
-        neutral_velocities: Array,
-        speed: Array,
-        directions: Any,
-        add_product: Any,
-    ) -> None:
-        """``e + A -> 2e + A+``: share ``E - E_iz`` between the two electrons."""
-        mass = self._masses[process.products["electron"]]
-        energy = 0.5 * mass * speed**2
-        residual = xp.clip(energy - process.loss * ELEMENTARY_CHARGE, 0.0, None)
-        fraction = self._secondary_fraction(process, residual)
-        primary_energy = (1.0 - fraction) * residual
-        secondary_energy = fraction * residual
-        primary_speed = xp.sqrt(2.0 * primary_energy / mass)
-        secondary_speed = xp.sqrt(2.0 * secondary_energy / mass)
-        velocities[marker_indices] = neutral_velocities + primary_speed[
-            :, None
-        ] * directions(primary_energy / ELEMENTARY_CHARGE)
-        add_product(
-            "electron",
-            neutral_velocities
-            + secondary_speed[:, None]
-            * directions(secondary_energy / ELEMENTARY_CHARGE),
-        )
-
-    def _ion_impact_ionization(
-        self,
-        process: CollisionProcess,
-        marker_indices: Array,
-        velocities: Array,
-        neutral_velocities: Array,
-        center_of_mass: Array,
-        incident_direction: Array,
-        speed: Array,
-        mass: float,
-        neutral_mass: float,
-        add_product: Any,
-    ) -> None:
-        """``A+ + B -> A+ + B+ + e``: the electron takes its share of ``E_cm - E_iz``.
-
-        The incident and the target ion separate along the incident direction
-        in the centre-of-mass frame with the remaining energy, and the electron
-        is emitted isotropically from the centre of mass. Energy and momentum
-        are conserved up to the electron's momentum, O(sqrt(m_e / M)).
-        """
-        num = int(marker_indices.shape[0])
-        electron_mass = self._masses[process.products["electron"]]
-        total_mass = mass + neutral_mass
-        reduced_mass = mass * neutral_mass / total_mass
-        energy = 0.5 * reduced_mass * speed**2
-        residual = xp.clip(energy - process.loss * ELEMENTARY_CHARGE, 0.0, None)
-        secondary_energy = self._secondary_fraction(process, residual) * residual
-        new_relative = (
-            xp.sqrt(2.0 * (residual - secondary_energy) / reduced_mass)[:, None]
-            * incident_direction
-        )
-        velocities[marker_indices] = (
-            center_of_mass + (neutral_mass / total_mass) * new_relative
-        )
-        add_product("ion", center_of_mass - (mass / total_mass) * new_relative)
-        secondary_speed = xp.sqrt(2.0 * secondary_energy / electron_mass)
-        add_product(
-            "electron",
-            center_of_mass
-            + secondary_speed[:, None] * _isotropic_directions(self._rng, num),
-        )
 
     # ------------------------------------------------------------------ #
     # Collision step
