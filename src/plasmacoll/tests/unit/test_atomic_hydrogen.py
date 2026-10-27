@@ -171,3 +171,15 @@ def test_eedf_rates_check_their_input() -> None:
     # unnormalised: the raw integral
     raw = eedf_rate_coefficient(cross_section, energy, np.ones(11), normalise=False)
     assert raw > 0.0
+
+
+def test_johnson_is_clipped_where_it_turns_negative() -> None:
+    from plasmacoll.atomic_hydrogen import JOHNSON_MAX_LEVEL
+
+    fit = excitation_fit(30, 31)
+    sigma = fit(fit.threshold * np.geomspace(1.001, 100.0, 200))
+    assert np.all(sigma >= 0.0) and np.any(sigma == 0.0)
+    n = JOHNSON_MAX_LEVEL
+    for m in range(n + 1, n + 4):
+        fit = excitation_fit(n, m)
+        assert np.all(fit(fit.threshold * np.geomspace(1.001, 1e3, 200)) > 0.0)

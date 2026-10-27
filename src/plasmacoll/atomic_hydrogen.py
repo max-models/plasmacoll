@@ -26,6 +26,11 @@ so it is used here. The threshold of ``n -> m`` is
 as in the report (eqs. 7, 10 and 14). The report gives the accuracy of the
 fits as 10 to 20% from the ground state and 20 to 50% between excited states
 near threshold.
+
+Johnson's excitation formula turns negative for ``n -> n + 1`` from ``n = 25``
+on, over a range of energies a few times the threshold (``B - A ln(2 n^2 / y)``
+outweighs the logarithmic term); there the cross section is set to zero, so
+use these fits for ``n <= 24`` (:data:`JOHNSON_MAX_LEVEL`).
 """
 
 from __future__ import annotations
@@ -38,6 +43,7 @@ from plasmacoll.janev import HydrogenFit
 
 __all__ = [
     "HYDROGEN_RYDBERG",
+    "JOHNSON_MAX_LEVEL",
     "excitation_fit",
     "gaunt_coefficients",
     "hydrogen_atom_processes",
@@ -49,6 +55,9 @@ __all__ = [
 
 #: The Rydberg energy of the report's thresholds [eV].
 HYDROGEN_RYDBERG = 13.6
+
+#: The highest level for which Johnson's excitation formula stays positive.
+JOHNSON_MAX_LEVEL = 24
 
 #: 1e-16 cm^2 and 1 cm^2 in m^2.
 _A2 = 1.0e-20
@@ -185,7 +194,8 @@ def _johnson_excitation(n: int, m: int):
         bracket = big_a * (np.log(x) + 0.5 / x) + (
             big_b - big_a * math.log(2.0 * n**2 / y)
         ) * (1.0 - 1.0 / x)
-        return _A2 * 1.76 * n**2 / (y * x) * (1.0 - np.exp(-r * y * x)) * bracket
+        sigma = _A2 * 1.76 * n**2 / (y * x) * (1.0 - np.exp(-r * y * x)) * bracket
+        return np.maximum(sigma, 0.0)
 
     return fit
 
