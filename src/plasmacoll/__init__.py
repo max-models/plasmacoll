@@ -3,10 +3,13 @@
 plasmacoll collides markers (positions, velocities and weights in NumPy or CuPy
 arrays, through :mod:`cunumpy`) with prescribed Maxwellian neutral backgrounds:
 elastic and backscatter collisions, excitation, ionization, attachment,
-detachment, charge transfer and dissociation, with cross sections from tables,
-LXCat files or functions. It is the collision step of a particle-in-cell code,
+detachment, charge transfer, dissociation and the charge changes of fast beams, with cross sections from tables,
+LXCat files or functions (process sets for argon and sputtered metals in
+:mod:`plasmacoll.argon` and :mod:`plasmacoll.metals`). It is the collision step of a particle-in-cell code,
 or with :class:`ZeroDReactor` a homogeneous reactor (optionally in an electric
-field) for testing cross-section sets.
+field) for testing cross-section sets. :func:`solve_eedf` solves the two-term
+Boltzmann equation for the same processes, for rates and transport
+coefficients consistent with them.
 
 Example:
     >>> import plasmacoll
@@ -24,6 +27,12 @@ Example:
 import scope_profiler as sp
 
 from plasmacoll._profiling import PROFILE_TAGS
+from plasmacoll.argon import (
+    argon_electron_processes,
+    argon_ion_cross_sections,
+    argon_ion_processes,
+)
+from plasmacoll.atomic_hydrogen import hydrogen_atom_processes
 from plasmacoll.background import (
     DensityProfile,
     DynamicProfile,
@@ -31,7 +40,17 @@ from plasmacoll.background import (
     NeutralBackground,
     Profile,
 )
-from plasmacoll.charge_states import ChargeStateTransitions, charge_state_fractions
+from plasmacoll.boltzmann import (
+    BoltzmannSolution,
+    SwarmTable,
+    solve_eedf,
+    swarm_table,
+)
+from plasmacoll.charge_states import (
+    ChargeStateTransitions,
+    charge_state_fractions,
+    stripping_processes,
+)
 from plasmacoll.cross_sections import (
     CrossSection,
     LXCatProcess,
@@ -49,10 +68,16 @@ from plasmacoll.mcc import (
     make_rng,
     scattering_cosine,
 )
+from plasmacoll.metals import (
+    LotzSubshell,
+    lotz_cross_section,
+    metal_ionization_cross_section,
+)
 from plasmacoll.population import merge_markers, split_markers
 from plasmacoll.process import CollisionProcess
-from plasmacoll.rates import RateTable, rate_coefficient
+from plasmacoll.rates import RateTable, eedf_rate_coefficient, rate_coefficient
 from plasmacoll.reactor import ReactorHistory, ReactorState, ZeroDReactor
+from plasmacoll.secondaries import RUDD_H2, RuddIonization, RuddShell
 from plasmacoll.vibrational import (
     VibrationalDistribution,
     boltzmann_level_populations,
@@ -65,6 +90,8 @@ __version__ = "0.3.0"
 sp.register_opt_in_tag(*PROFILE_TAGS)
 
 __all__ = [
+    "RUDD_H2",
+    "BoltzmannSolution",
     "ChargeStateTransitions",
     "CollisionProcess",
     "CrossSection",
@@ -72,6 +99,7 @@ __all__ = [
     "DynamicProfile",
     "FunctionProfile",
     "LXCatProcess",
+    "LotzSubshell",
     "MCCDiagnostics",
     "MCCResult",
     "MarkerSet",
@@ -83,18 +111,31 @@ __all__ = [
     "RateTable",
     "ReactorHistory",
     "ReactorState",
+    "RuddIonization",
+    "RuddShell",
+    "SwarmTable",
     "VibrationalDistribution",
     "ZeroDReactor",
+    "argon_electron_processes",
+    "argon_ion_cross_sections",
+    "argon_ion_processes",
     "boltzmann_level_populations",
+    "eedf_rate_coefficient",
     "elastic_from_lxcat",
     "estimate_electronegativity",
     "find_lxcat_process",
+    "hydrogen_atom_processes",
+    "lotz_cross_section",
     "charge_state_fractions",
     "make_rng",
     "merge_markers",
+    "metal_ionization_cross_section",
     "proton_hydrogen_processes",
     "rate_coefficient",
     "read_lxcat",
     "scattering_cosine",
+    "solve_eedf",
     "split_markers",
+    "stripping_processes",
+    "swarm_table",
 ]

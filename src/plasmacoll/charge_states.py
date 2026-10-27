@@ -16,6 +16,11 @@ where the targets' density ratios are constant is the matrix exponential of
 ``sum_t delta pi_t M_t``, which :func:`charge_state_fractions` takes step by
 step along the path.
 
+:func:`stripping_processes` turns the same cross sections into ``stripping``
+processes of :class:`~plasmacoll.mcc.MonteCarloCollisions`, one species per
+state, so that markers that change state one event at a time follow the
+fractions on average.
+
 The cross sections are inputs, as everywhere in plasmacoll: the beam stripping
 data of hydrogen and deuterium (e.g. the ORNL "Redbook", Barnett 1990, and
 IAEA/ALADDIN) are not reproduced here.
@@ -30,11 +35,15 @@ import numpy as np
 import scope_profiler as sp
 
 from plasmacoll._profiling import PROFILE_TAGS
+from plasmacoll.cross_sections import CrossSection
+from plasmacoll.process import CollisionProcess
 
-__all__ = ["ChargeStateTransitions", "charge_state_fractions"]
+__all__ = ["ChargeStateTransitions", "charge_state_fractions", "stripping_processes"]
 
 #: The charge states of a hydrogen (or deuterium) beam.
 HYDROGEN_STATES = ("-", "0", "+")
+#: The charge (in e) of the hydrogen states.
+HYDROGEN_CHARGES = {"-": -1, "0": 0, "+": 1}
 
 
 def _expm(matrix: np.ndarray) -> np.ndarray:
@@ -170,3 +179,73 @@ def charge_state_fractions(
         )
         fractions[k] = _expm(step) @ fractions[k - 1]
     return fractions
+
+
+def stripping_processes(
+    transitions: ChargeStateTransitions,
+    species: Mapping[str, str],
+    backgrounds: Mapping[str, str] | None = None,
+    *,
+    charges: Mapping[str, int] | None = None,
+    electron: str | None = None,
+    ions: Mapping[str, str] | None = None,
+) -> dict[str, list[CollisionProcess]]:
+    """Return the ``stripping`` processes of every state, for the Monte Carlo collisions.
+
+    Every transition ``(from, to)`` on a target becomes a process of the
+    species of ``from`` on the target's background that moves the marker to
+    the species of ``to``, with the constant cross section of ``transitions``
+    looked up in the lab frame. The Monte Carlo collision frequency
+    ``n sigma g`` is then that of the fractions, ``n sigma v``, wherever the
+    beam is much faster than the target particles.
+
+    Args:
+        transitions: The cross sections.
+        species: The species name of every state, e.g.
+            ``{"-": "H-", "0": "H", "+": "H+"}``; states without a species are
+            left out with their transitions.
+        backgrounds: The background name of every target (the target name if
+            missing).
+        charges: The charge of every state in e (those of ``"-"``, ``"0"`` and
+            ``"+"`` by default).
+        electron: The species of the released electrons; not tracked if None.
+        ions: ``{target: species}``, the ion a capture leaves behind; not
+            tracked for targets missing here.
+
+    Returns:
+        ``{species: [processes]}``, named ``"<from>-><to>:<target>"``.
+
+    Raises:
+        ValueError: If a state has no charge or two states the same charge.
+    """
+    charges = dict(HYDROGEN_CHARGES if charges is None else charges)
+    backgrounds = dict(backgrounds or {})
+    ions = dict(ions or {})
+    missing = set(transitions.states) - set(charges)
+    if missing:
+        raise ValueError(f"no charge given for the state(s) {sorted(missing)}")
+    processes: dict[str, list[CollisionProcess]] = {}
+    for target, table in transitions.cross_sections.items():
+        for (start, end), sigma in table.items():
+            if start not in species or end not in species or sigma <= 0.0:
+                continue
+            change = int(charges[end]) - int(charges[start])
+            if change == 0:
+                raise ValueError(f"the states {start!r} and {end!r} have one charge")
+            products = {"projectile": species[end]}
+            if change > 0 and electron is not None:
+                products["electron"] = electron
+            if change < 0 and target in ions:
+                products["ion"] = ions[target]
+            processes.setdefault(species[start], []).append(
+                CollisionProcess(
+                    "stripping",
+                    backgrounds.get(target, target),
+                    CrossSection.constant(sigma, label=f"{start} -> {end} on {target}"),
+                    name=f"{start}->{end}:{target}",
+                    energy_frame="lab",
+                    products=products,
+                    charge_change=change,
+                )
+            )
+    return processes

@@ -16,6 +16,8 @@ ELECTRON_MASS = 9.1093837015e-31
 PROTON_MASS = 1.67262192369e-27
 #: Atomic mass constant (1 u, 1/12 of the mass of carbon-12) in kg.
 ATOMIC_MASS = 1.66053906660e-27
+#: One townsend (Td), the unit of the reduced field ``E/N``, in V m^2.
+TOWNSEND = 1.0e-21
 
 
 def kelvin_to_ev(temperature: float) -> float:

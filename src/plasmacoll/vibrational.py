@@ -21,10 +21,11 @@ arXiv:1911.03319 (2019), eq. (5), and references therein (Kalache et al. 2004;
 Kimura and Kasugai 2010).
 
 It does **not** solve the vibrational kinetics (electron-impact excitation,
-V-V/V-T relaxation, wall association) self-consistently. It also does **not**
-ship level-resolved DA cross sections (Wadehra 1984; Fabrikant; Celiberto):
-:meth:`plasmacoll.cross_sections.CrossSection.vibrational_mixture` takes them as
-input from the user.
+V-V/V-T relaxation, wall association) self-consistently. Level-resolved DA
+cross sections are the fits of Janev, Reiter and Samm (2003) in
+:mod:`plasmacoll.janev` (:func:`plasmacoll.janev.dissociative_attachment`), or
+other data through
+:meth:`plasmacoll.cross_sections.CrossSection.vibrational_mixture`.
 """
 
 from __future__ import annotations

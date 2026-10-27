@@ -29,6 +29,7 @@ PROCESS_KINDS = (
     "dissociation",
     "dissociative_attachment",
     "dissociative_ionization",
+    "stripping",
 )
 #: The product species each kind needs, by role.
 PRODUCT_ROLES: dict[str, tuple[str, ...]] = {
@@ -42,16 +43,19 @@ PRODUCT_ROLES: dict[str, tuple[str, ...]] = {
     "dissociation": (),
     "dissociative_attachment": ("negative_ion",),
     "dissociative_ionization": ("electron", "ion"),
+    "stripping": ("projectile",),
 }
 #: The product species a kind may have. ``neutral`` is the fast neutral of a
 #: charge exchange and ``fragment`` the neutral fragment of a dissociation; both
-#: are dropped (not tracked) unless a species is given for them.
+#: are dropped (not tracked) unless a species is given for them. ``electron``
+#: and ``ion`` of ``stripping`` are the released electrons and the target ion.
 OPTIONAL_PRODUCT_ROLES: dict[str, tuple[str, ...]] = {
     "backscatter": ("neutral",),
     "charge_transfer": ("ion", "neutral"),
     "dissociation": ("fragment",),
     "dissociative_attachment": ("fragment",),
     "dissociative_ionization": ("fragment",),
+    "stripping": ("electron", "ion"),
 }
 #: The frames whose kinetic energy the cross section is looked up at.
 ENERGY_FRAMES = ("center_of_mass", "lab")
@@ -66,6 +70,7 @@ _NO_ENERGY_LOSS = (
     "attachment",
     "charge_transfer",
     "dissociative_attachment",
+    "stripping",
 )
 _IONIZATION_KINDS = ("ionization", "dissociative_ionization")
 
@@ -104,6 +109,10 @@ class CollisionProcess:
         sharing_energy: The parameter ``w`` in eV of ``"opal"`` sharing, of
             order the ionization energy (e.g. 10.0 for argon, 8.3 for H2).
         scattering: One of :data:`SCATTERING_MODELS`.
+        charge_change: For ``stripping``, the change of the projectile's charge
+            in e: 1 for single stripping (``H- -> H``, ``H -> H+``), 2 for
+            double stripping (``H- -> H+``), -1 for electron capture
+            (``H+ -> H``). A positive change releases that many electrons.
     """
 
     kind: str
@@ -116,6 +125,7 @@ class CollisionProcess:
     energy_sharing: str = "equal"
     sharing_energy: float | None = None
     scattering: str = "isotropic"
+    charge_change: int = 1
 
     def __post_init__(self) -> None:
         """Validate the process definition."""
@@ -147,6 +157,14 @@ class CollisionProcess:
             raise ValueError(
                 f"{self.kind} process has no product role(s) {sorted(unknown)}"
             )
+        if self.kind == "stripping":
+            if int(self.charge_change) != self.charge_change or not self.charge_change:
+                raise ValueError("stripping needs a non-zero integer charge_change")
+            if self.charge_change < 0 and "electron" in self.products:
+                raise ValueError(
+                    "electron capture (charge_change < 0) releases no electron"
+                )
+            object.__setattr__(self, "charge_change", int(self.charge_change))
         if self.energy_loss is not None and self.energy_loss < 0.0:
             raise ValueError("energy_loss must be >= 0")
         object.__setattr__(self, "products", dict(self.products))
