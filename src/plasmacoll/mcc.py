@@ -58,6 +58,18 @@ process's ``scattering`` model about the incident direction:
     :func:`~plasmacoll.charge_states.stripping_processes` builds these
     processes from a :class:`~plasmacoll.charge_states.ChargeStateTransitions`,
     so that the markers and the fractions use the same cross sections.
+``beam_ionization``
+    A fast projectile ionizes the target, ``X + B -> X + B+ + e``, and keeps its
+    velocity (the energy it loses, the binding energy and the electron's, is
+    negligible against a beam's). The ``ion`` product, the ionized target,
+    starts with the neutral's velocity; the optional ``electron`` product is
+    emitted isotropically from the neutral with an energy from the
+    Opal-Peterson-Beaty distribution ``1 / (1 + (E_s / w)^2)`` of width
+    ``w = sharing_energy``, cut at the binary-encounter maximum
+    ``2 m_e g^2`` (four times the energy of an electron at the projectile's
+    speed). This is the gas ionization of a beam line, whose slow ions the
+    accelerator's field sends back (backstreaming); momentum is conserved up
+    to the electron's and the ion's recoil, negligible for a beam.
 
 Products take the position and weight of the incident marker, which conserves
 charge and particle number marker by marker, so markers may have any weights.
@@ -709,6 +721,19 @@ class MonteCarloCollisions:
             removed[marker_indices] = True
             add_optional("ion", neutral_velocities)
             add_optional("neutral", velocity)
+        elif kind == "beam_ionization":
+            add_product("ion", xp.array(neutral_velocities, copy=True))
+            if "electron" in process.products:
+                electron_mass = self._masses[process.products["electron"]]
+                width = float(process.sharing_energy) * ELEMENTARY_CHARGE
+                most = 2.0 * electron_mass * speed**2
+                energy = width * xp.tan(self._rng.random(num) * xp.arctan(most / width))
+                add_product(
+                    "electron",
+                    neutral_velocities
+                    + xp.sqrt(2.0 * energy / electron_mass)[:, None]
+                    * _isotropic_directions(self._rng, num),
+                )
         elif kind == "stripping":
             removed[marker_indices] = True
             add_product("projectile", xp.array(velocity, copy=True))

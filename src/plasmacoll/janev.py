@@ -23,13 +23,17 @@ key                                   reaction                                  
 ``mutual_neutralization``             H+ + H- -> H(n=2, 3) + H                   eq. (63), table 10
 ``hminus_h_associative_detachment``   H- + H -> H2 + e                           eq. (71), table 11
 ``hminus_h_detachment``               H- + H -> 2H + e                           eq. (71), table 11
+``proton_h2_charge_exchange``         H+ + H2(v=0) -> H + H2+                    eqs. (144), (145),
+                                                                                 table 31
+``hminus_h2_detachment``              H- + H2(v=0) -> H + H2 + e                 eq. (159)
 ====================================  =========================================  ===================
 
 Energies are in eV and cross sections in m^2 (the report's are in cm^2).
 Electron collisions with H2 are fitted against the electron's energy with the
 molecule at rest (``energy_frame="lab"``), the collisions of H- against the
 centre-of-mass energy (``energy_frame="center_of_mass"``; for e + H- the two
-agree to O(m_e/M)). The report gives the H- polynomial fits (eqs. (63), (71))
+agree to O(m_e/M)), the collisions of fast H+ and H- with H2 against the
+projectile's energy with the molecule at rest (``"lab"``). The report gives the H- polynomial fits (eqs. (63), (71))
 against E_CM and as valid from 0.1 eV to 20 keV; the same coefficients are in
 HYDHEL (from Janev, Langer, Evans and Post 1987) with the mass of 1 u on their
 energy scale, i.e. against E = m_p g^2 / 2 = 2 E_CM. This module follows the
@@ -39,6 +43,14 @@ Each fit's :meth:`HydrogenFit.cross_section` tabulates it for the collision
 operator: beyond the fit's range of validity the end values hold. Elastic
 collisions are outside the report's scope (its section 1), so the elastic
 momentum-transfer cross sections of e + H2 and e + H are not here.
+
+The two fast-projectile fits reach the beam energies of a neutral beam
+injector: eq. (159) is fitted to measurements from the threshold to the MeV
+region; eqs. (144), (145) to about 200 keV, beyond which the fit's own power-law
+tail is kept (not the end value), an extrapolation. The report states the
+energy of eq. (159) in keV, but its magnitudes (the maximum of 1e-15 cm^2 at 2
+to 8 keV, its Figure 34) and its threshold of 2.18 eV hold with the energy in
+eV, which this module uses.
 
 The electron excitation of H2 starts from H2(X, v=0), as the report's fits do.
 The dissociative attachment depends strongly on the vibrational level:
@@ -259,6 +271,59 @@ def _hminus_detachment(energy: np.ndarray) -> np.ndarray:
     )
 
 
+#: Table 31, v = 0: E_0v (eV), a_1..a_6 and b_1..b_11 of eqs. (145a), (145b).
+_PROTON_H2_CX = {
+    "e0": 2.67,
+    "a": (18.60, -1.66, 2.53, 1.93, 0.0, 0.0),
+    "b": (
+        17.3,
+        105.0,
+        2.0,
+        1.0e4,
+        -1.12,
+        3.64e-4,
+        0.90,
+        5.03e-19,
+        4.00,
+        5.87e-28,
+        5.50,
+    ),
+}
+
+
+def _proton_h2_charge_exchange(energy: np.ndarray) -> np.ndarray:
+    """Eqs. (144), (145): H+ + H2(v=0) -> H + H2+ [1e-16 cm^2], E the proton's lab energy."""
+    a1, a2, a3, a4, a5, a6 = _PROTON_H2_CX["a"]
+    b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11 = _PROTON_H2_CX["b"]
+    low = (
+        a1
+        * energy**a2
+        * (1.0 - (_PROTON_H2_CX["e0"] / energy) ** a3) ** a4
+        * np.exp(-a5 * energy**a6)
+    )
+    high = (
+        b1
+        * np.exp(-b2 / energy**b3)
+        / (b4 * energy**b5 + b6 * energy**b7 + b8 * energy**b9 + b10 * energy**b11)
+    )
+    return _A2 * (low + high)
+
+
+def _hminus_h2_detachment(energy: np.ndarray) -> np.ndarray:
+    """Eq. (159): H- + H2(v=0) -> H + H2 + e [1e-16 cm^2], E the H-'s lab energy in eV."""
+    low = (
+        81.10
+        / (energy**0.63 * (1.0 + 2.03e-6 * energy**1.95))
+        * (1.0 - np.exp(-0.057 * (energy / 2.18 - 1.0) ** 0.94))
+    )
+    high = (
+        1.22e3
+        / (energy**0.5 * (1.0 + 6.91e-4 * energy**0.40))
+        * np.exp(-125.0 / energy**0.663)
+    )
+    return _A2 * (low + high)
+
+
 def _log_polynomial(*coefficients: float) -> Callable[[np.ndarray], np.ndarray]:
     """Eqs. (63) and (71): ln sigma[cm^2] = sum_j a_j (ln E)^j."""
 
@@ -423,6 +488,14 @@ def _fits() -> dict[str, HydrogenFit]:
             0.0, "center_of_mass",
             _log_polynomial(*HMINUS_H_COEFFICIENTS["detachment"]),
             valid_from=0.1, valid_to=2.0e4,
+        ),
+        HydrogenFit(
+            "proton_h2_charge_exchange", "H+ + H2(v=0) -> H + H2+",
+            "eqs. (144) and (145), table 31", 2.67, "lab", _proton_h2_charge_exchange,
+        ),
+        HydrogenFit(
+            "hminus_h2_detachment", "H- + H2(v=0) -> H + H2 + e", "eq. (159)",
+            2.18, "lab", _hminus_h2_detachment,
         ),
     ]  # fmt: skip
     return {fit.key: fit for fit in fits}
