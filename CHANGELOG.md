@@ -17,6 +17,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   products. `stripping_processes` builds these processes from a `ChargeStateTransitions`, so the
   markers and `charge_state_fractions` use the same cross sections; over many markers the
   populations follow the fractions along the path.
+- The reactions of a fast hydrogen or deuterium beam with H₂ gas (`hydrogen_beam_on_h2`,
+  `BeamGasReactions`): H⁻ stripping and H⁺ capture from Janev, Reiter and Samm (2003), eqs. (159)
+  and (144)–(145) (also in `JANEV_FITS`), gas ionization by protons from Rudd's model, and labelled
+  placeholders for the rest; as charge-state cross sections at one energy and as MCC processes.
+- A process kind `beam_ionization`: a fast projectile ionizes the target and keeps its velocity,
+  the target ion starts at rest and the electron with a few times the binding energy (the
+  backstreaming ions of an accelerator).
 
 - Argon and metal process sets for magnetron models (`plasmacoll.argon`, `plasmacoll.metals`):
   `argon_electron_processes` builds the electron-argon processes of a downloaded LXCat set,

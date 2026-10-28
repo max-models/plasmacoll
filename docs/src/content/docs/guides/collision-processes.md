@@ -25,6 +25,7 @@ isotropically, or with the process's [scattering model](#scattering-models).
 | `detachment`               | $A^- + B \to A + B + e$      | negative ion removed, electron emitted isotropically about $\mathbf V$ with $\tfrac12\mu g^2 - E_{th}$      | `electron`                             |
 | `charge_transfer`          | $A^+ + B \to A + B^+$        | incident removed; with an `ion` product, $B^+$ created at $\mathbf w$                                       | optional `ion`, `neutral`              |
 | `stripping`                | $H^- + B \to H + B + e$      | incident moved to the `projectile` species at its own velocity; electrons at that velocity, ion at $\mathbf w$ | `projectile`, optional `electron`, `ion` |
+| `beam_ionization`          | $X + B \to X + B^+ + e$      | fast projectile keeps its velocity; ion at $\mathbf w$; electron isotropic about $\mathbf w$, energy of width `sharing_energy` up to $2 m_e g^2$ | `ion`, optional `electron` |
 
 `products` maps each role to a species name, for example
 `{"electron": "e", "ion": "Ar+"}`. Every species involved needs a mass in `species_masses`.
@@ -166,6 +167,30 @@ cross section looked up in the lab frame. Its collision frequency $n\sigma g$ eq
 fractions' $n\sigma v$ where the beam is much faster than the target particles. The cross
 sections are inputs: the beam stripping data of hydrogen and deuterium (the ORNL "Redbook",
 IAEA/ALADDIN) are not shipped.
+
+### A beam in the gas of its beam line
+
+`hydrogen_beam_on_h2()` collects the reactions of a hydrogen (or, at the same speed, deuterium)
+beam with H₂ against the projectile's energy: the H⁻ stripping and the H⁺ capture from Janev,
+Reiter and Samm (2003, eqs. (159) and (144)–(145)), the ionization of the gas by protons from
+Rudd's model, and labelled placeholders for the rest (double stripping, the stripping of the
+neutrals, the ionization by H and H⁻). `reactions.placeholders` lists them. The ionization of the
+gas, the source of the backstreaming ions of an accelerator, is the `beam_ionization` kind: the
+projectile keeps its velocity, the slow ion and electron are new markers.
+
+```python
+reactions = plasmacoll.hydrogen_beam_on_h2(max_energy=1.2e6)
+reactions.transitions(1.0e5)  # ChargeStateTransitions at 100 keV, for the fractions
+reactions.ionization(1.0e5)  # {"H2": {state: sigma}}
+processes = reactions.processes(
+    {"-": "H-", "0": "H", "+": "H+"},
+    {"H2": "gas"},  # the background of the target
+    electron="e",
+    ions={"H2": "H2+"},
+)
+```
+
+The gas along the beam is a `NeutralBackground` with a `DensityProfile` along the beam axis.
 
 ## Out of scope
 

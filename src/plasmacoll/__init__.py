@@ -40,6 +40,11 @@ from plasmacoll.background import (
     NeutralBackground,
     Profile,
 )
+from plasmacoll.beam_gas import (
+    BeamGasReaction,
+    BeamGasReactions,
+    hydrogen_beam_on_h2,
+)
 from plasmacoll.boltzmann import (
     BoltzmannSolution,
     SwarmTable,
@@ -91,6 +96,8 @@ sp.register_opt_in_tag(*PROFILE_TAGS)
 
 __all__ = [
     "RUDD_H2",
+    "BeamGasReaction",
+    "BeamGasReactions",
     "BoltzmannSolution",
     "ChargeStateTransitions",
     "CollisionProcess",
@@ -125,6 +132,7 @@ __all__ = [
     "estimate_electronegativity",
     "find_lxcat_process",
     "hydrogen_atom_processes",
+    "hydrogen_beam_on_h2",
     "lotz_cross_section",
     "charge_state_fractions",
     "make_rng",
