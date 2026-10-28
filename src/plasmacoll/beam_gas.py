@@ -43,6 +43,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
+import cunumpy as xp
 import numpy as np
 
 from plasmacoll.charge_states import (
@@ -160,7 +161,7 @@ class BeamGasReactions:
         table: dict[str, dict[tuple[str, str], float]] = {t: {} for t in self.targets}
         for reaction in self.reactions:
             if reaction.end is not None:
-                sigma = float(np.asarray(reaction.cross_section(energy)))
+                sigma = float(xp.to_numpy(reaction.cross_section(energy)))
                 table[reaction.target][(reaction.start, reaction.end)] = sigma
         return ChargeStateTransitions(table, self.states)
 
@@ -169,7 +170,7 @@ class BeamGasReactions:
         table: dict[str, dict[str, float]] = {t: {} for t in self.targets}
         for reaction in self.reactions:
             if reaction.end is None:
-                sigma = float(np.asarray(reaction.cross_section(energy)))
+                sigma = float(xp.to_numpy(reaction.cross_section(energy)))
                 table[reaction.target][reaction.start] = sigma
         return table
 
@@ -211,7 +212,8 @@ class BeamGasReactions:
                 continue
             background = backgrounds.get(reaction.target, reaction.target)
             products: dict[str, str] = {}
-            if reaction.is_ionization:
+            end = reaction.end
+            if end is None:
                 if reaction.target not in ions:
                     continue
                 products["ion"] = ions[reaction.target]
@@ -227,12 +229,10 @@ class BeamGasReactions:
                     sharing_energy=self.sharing_energy,
                 )
             else:
-                if reaction.end not in species:
+                if end not in species:
                     continue
-                change = int(self.charges[reaction.end]) - int(
-                    self.charges[reaction.start]
-                )
-                products["projectile"] = species[reaction.end]
+                change = int(self.charges[end]) - int(self.charges[reaction.start])
+                products["projectile"] = species[end]
                 if change > 0 and electron is not None:
                     products["electron"] = electron
                 if change < 0 and reaction.target in ions:

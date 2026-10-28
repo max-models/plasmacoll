@@ -725,7 +725,7 @@ class MonteCarloCollisions:
             add_product("ion", xp.array(neutral_velocities, copy=True))
             if "electron" in process.products:
                 electron_mass = self._masses[process.products["electron"]]
-                width = float(process.sharing_energy) * ELEMENTARY_CHARGE
+                width = float(process.sharing_energy or 0.0) * ELEMENTARY_CHARGE
                 most = 2.0 * electron_mass * speed**2
                 energy = width * xp.tan(self._rng.random(num) * xp.arctan(most / width))
                 add_product(

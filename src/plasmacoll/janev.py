@@ -272,33 +272,21 @@ def _hminus_detachment(energy: np.ndarray) -> np.ndarray:
 
 
 #: Table 31, v = 0: E_0v (eV), a_1..a_6 and b_1..b_11 of eqs. (145a), (145b).
-_PROTON_H2_CX = {
-    "e0": 2.67,
-    "a": (18.60, -1.66, 2.53, 1.93, 0.0, 0.0),
-    "b": (
-        17.3,
-        105.0,
-        2.0,
-        1.0e4,
-        -1.12,
-        3.64e-4,
-        0.90,
-        5.03e-19,
-        4.00,
-        5.87e-28,
-        5.50,
-    ),
-}
+_PROTON_H2_CX_E0 = 2.67
+_PROTON_H2_CX_A = (18.60, -1.66, 2.53, 1.93, 0.0, 0.0)
+_PROTON_H2_CX_B = (
+    17.3, 105.0, 2.0, 1.0e4, -1.12, 3.64e-4, 0.90, 5.03e-19, 4.00, 5.87e-28, 5.50,
+)  # fmt: skip
 
 
 def _proton_h2_charge_exchange(energy: np.ndarray) -> np.ndarray:
     """Eqs. (144), (145): H+ + H2(v=0) -> H + H2+ [1e-16 cm^2], E the proton's lab energy."""
-    a1, a2, a3, a4, a5, a6 = _PROTON_H2_CX["a"]
-    b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11 = _PROTON_H2_CX["b"]
+    a1, a2, a3, a4, a5, a6 = _PROTON_H2_CX_A
+    b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11 = _PROTON_H2_CX_B
     low = (
         a1
         * energy**a2
-        * (1.0 - (_PROTON_H2_CX["e0"] / energy) ** a3) ** a4
+        * (1.0 - (_PROTON_H2_CX_E0 / energy) ** a3) ** a4
         * np.exp(-a5 * energy**a6)
     )
     high = (
