@@ -31,6 +31,13 @@ Johnson's excitation formula turns negative for ``n -> n + 1`` from ``n = 25``
 on, over a range of energies a few times the threshold (``B - A ln(2 n^2 / y)``
 outweighs the logarithmic term); there the cross section is set to zero, so
 use these fits for ``n <= 24`` (:data:`JOHNSON_MAX_LEVEL`).
+
+Above that, :func:`vriens_smeets_excitation_rate` and
+:func:`vriens_smeets_ionization_rate` give the Maxwellian rate coefficients of
+L. Vriens and A. H. M. Smeets, Phys. Rev. A 22, 940 (1980), eqs. (17) and (8),
+fitted to classical and Born results for any ``n`` (stated accuracy about 20%
+for ``n >= 3``): rate coefficients, not cross sections, so for a Maxwellian
+electron distribution only.
 """
 
 from __future__ import annotations
@@ -51,6 +58,8 @@ __all__ = [
     "ionization_fit",
     "oscillator_strength",
     "transition_energy",
+    "vriens_smeets_excitation_rate",
+    "vriens_smeets_ionization_rate",
 ]
 
 #: The Rydberg energy of the report's thresholds [eV].
@@ -62,6 +71,8 @@ JOHNSON_MAX_LEVEL = 24
 #: 1e-16 cm^2 and 1 cm^2 in m^2.
 _A2 = 1.0e-20
 _CM2 = 1.0e-4
+#: 1 cm^3 in m^3.
+_CM3 = 1.0e-6
 #: sigma_0 of eqs. (4c) and (5) [1e-16 cm^2 eV].
 _SIGMA0 = 5.984
 
@@ -279,6 +290,86 @@ def ionization_fit(n: int) -> HydrogenFit:
         f"e_h_ionization_{n}", reaction, "eqs. (15), (16), Johnson (1972)",
         threshold, "lab", _johnson_ionization(n),
     )  # fmt: skip
+
+
+def _vs_b(n: int) -> float:
+    """``b_p`` of Vriens and Smeets, eq. (11); ``-0.603`` for ``n = 1`` as Johnson's."""
+    if n == 1:
+        return -0.603
+    return 1.4 * math.log(n) / n - 0.7 / n - 0.51 / n**2 + 1.16 / n**3 - 0.55 / n**4
+
+
+def vriens_smeets_excitation_rate(
+    n: int, m: int, temperature: np.ndarray | float
+) -> np.ndarray:
+    """Return the Maxwellian rate coefficient of ``e + H(n) -> e + H(m)`` in m^3/s.
+
+    Vriens and Smeets (1980), eq. (17), with ``f_nm`` of
+    :func:`oscillator_strength`:
+
+    ``K = 1.6e-7 sqrt(T) / (T + Gamma) exp(-dE/T) (A ln(0.3 T/Ry + Delta) + B)``
+    cm^3/s, ``A = 2 Ry/dE f_nm``, ``B = 4 Ry^2/m^3 (1/dE^2 + 4/3 E_n/dE^3 + b_n E_n^2/dE^4)``,
+    ``Delta = exp(-B/A) + 0.06 s^2/(m n^2)`` and ``Gamma = Ry ln(1 + n^3 T/Ry)
+    (3 + 11 s^2/n^2) / (6 + 1.6 m s + 0.3/s^2 + 0.8 m^1.5/s^0.5 |s - 0.6|)``,
+    ``s = m - n``, ``E_n = Ry/n^2``.
+
+    Args:
+        n: The lower level.
+        m: The upper level, ``m > n``.
+        temperature: ``kT_e`` in eV.
+    """
+    _check_pair(n, m)
+    t = np.asarray(temperature, dtype=float)
+    ry = HYDROGEN_RYDBERG
+    delta_e = transition_energy(n, m)
+    energy_n = ry / n**2
+    s = m - n
+    a = 2.0 * ry / delta_e * oscillator_strength(n, m)
+    b = (
+        4.0
+        * ry**2
+        / m**3
+        * (
+            1.0 / delta_e**2
+            + 4.0 / 3.0 * energy_n / delta_e**3
+            + _vs_b(n) * energy_n**2 / delta_e**4
+        )
+    )
+    delta = math.exp(-b / a) + 0.06 * s**2 / (m * n**2)
+    gamma = (
+        ry
+        * np.log(1.0 + n**3 * t / ry)
+        * (3.0 + 11.0 * s**2 / n**2)
+        / (6.0 + 1.6 * m * s + 0.3 / s**2 + 0.8 * m**1.5 / s**0.5 * abs(s - 0.6))
+    )
+    k = (
+        1.6e-7
+        * np.sqrt(t)
+        / (t + gamma)
+        * np.exp(-delta_e / t)
+        * (a * np.log(0.3 * t / ry + delta) + b)
+    )
+    return _CM3 * np.maximum(k, 0.0)
+
+
+def vriens_smeets_ionization_rate(
+    n: int, temperature: np.ndarray | float
+) -> np.ndarray:
+    """Return the Maxwellian rate coefficient of ``e + H(n) -> 2e + H+`` in m^3/s.
+
+    Vriens and Smeets (1980), eq. (8): ``K = 9.56e-6 T^-1.5 exp(-e_n) /
+    (e_n^2.33 + 4.38 e_n^1.72 + 1.32 e_n)`` cm^3/s with ``e_n = E_n / T``.
+    """
+    _check_level(n)
+    t = np.asarray(temperature, dtype=float)
+    eps = ionization_energy(n) / t
+    return (
+        _CM3
+        * 9.56e-6
+        * t**-1.5
+        * np.exp(-eps)
+        / (eps**2.33 + 4.38 * eps**1.72 + 1.32 * eps)
+    )
 
 
 def hydrogen_atom_processes(

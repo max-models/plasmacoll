@@ -7,6 +7,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `vriens_smeets_excitation_rate` and `vriens_smeets_ionization_rate` in
+  `plasmacoll.atomic_hydrogen`: the Maxwellian rate coefficients of Vriens and Smeets (1980) for
+  H(n) at any `n`, beyond the n = 24 where Johnson's excitation formula turns negative.
 - `plasmacoll.atomic_hydrogen`: electron excitation `n -> m` and ionization of H(n) for any
   principal quantum numbers, from Janev, Reiter and Samm (2003), section 2.1, and Johnson's
   (1972) formulas; Johnson's oscillator strengths; `hydrogen_atom_processes` for the MCC.
