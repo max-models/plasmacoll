@@ -137,8 +137,9 @@ Commits](https://www.conventionalcommits.org/).
 
 The documentation in `docs/` is an [Astro](https://astro.build/) +
 [Starlight](https://starlight.astro.build/) site: hand-written guides,
-the notebooks in `tutorials/` executed and published as the Examples, and the
-API reference generated from the docstrings. It needs Node 22 or newer.
+the notebooks in `tutorials/` executed and published as the Examples,
+and the API reference generated from the docstrings. It needs Node 22 or
+newer.
 
 ``` bash
 make docs-install     # npm packages and the Python docs extra
