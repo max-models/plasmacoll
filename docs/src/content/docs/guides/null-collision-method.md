@@ -1,5 +1,5 @@
 ---
-title: The null-collision method
+title: Null-collision method
 description: What one collision step does, how the frequency bound is built, and how to choose the time step.
 sidebar:
   order: 1
