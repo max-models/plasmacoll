@@ -27,7 +27,7 @@ jobs:
       smoke-paths: |
         getting-started/installation/index.html
         guides/null-collision-method/index.html
-        tutorials/02-relaxation/index.html
+        examples/02-relaxation/index.html
         api/plasmacoll/index.html
         api/plasmacoll/mcc/index.html
         api/plasmacoll/cross_sections/index.html

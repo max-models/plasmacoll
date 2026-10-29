@@ -59,7 +59,7 @@ Documentation: <https://max-models.github.io/plasmacoll/>
 
 ![Electron, H₂⁺ and H⁻ densities in a 0D reactor against the analytic
 growth
-rate](https://max-models.github.io/plasmacoll/tutorials/03-ionization-attachment/1.png)
+rate](https://max-models.github.io/plasmacoll/examples/03-ionization-attachment/1.png)
 
 ## Install
 
@@ -137,7 +137,7 @@ Commits](https://www.conventionalcommits.org/).
 
 The documentation in `docs/` is an [Astro](https://astro.build/) +
 [Starlight](https://starlight.astro.build/) site: hand-written guides,
-the notebooks in `tutorials/` executed and published as pages, and the
+the notebooks in `tutorials/` executed and published as the Examples, and the
 API reference generated from the docstrings. It needs Node 22 or newer.
 
 ``` bash

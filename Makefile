@@ -49,7 +49,7 @@ docs-install:  ## Python docs extra and the npm packages
 docs-hero:  ## redraw the home page figure (docs/src/assets/hero.svg)
 	$(PYTHON) docs/hero.py
 
-docs-notebooks:  ## execute the changed tutorials and convert all of them (FORCE=1 reruns all)
+docs-notebooks:  ## execute the changed notebooks and convert all of them (FORCE=1 reruns all)
 	$(NOTEBOOKS) execute $(if $(FORCE),--force,)
 	$(NOTEBOOKS) convert
 
