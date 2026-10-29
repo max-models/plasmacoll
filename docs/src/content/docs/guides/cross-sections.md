@@ -71,7 +71,8 @@ Phelps' Ar⁺ + Ar cross sections and the Lotz ionization of metals, see
 and Samm (2003) in `plasmacoll.janev` and the elastic e + H and e + H₂ fits of Park et al. (2022)
 in `plasmacoll.hydrogen_elastic`, the electron excitation and ionization of atomic hydrogen
 H(n) between any principal quantum numbers (the same report, section 2.1, with Johnson's 1972
-formulas where it has no fit) in `plasmacoll.atomic_hydrogen`, see
+formulas where it has no fit, and Vriens and Smeets' 1980 rate coefficients above n = 24) in
+`plasmacoll.atomic_hydrogen`, see
 [Negative-ion sources](/plasmacoll/guides/negative-ion-sources/#hydrogen-cross-sections),
 and the H₂ parameters of Rudd's model (below), checked in the tests against the review's own
 table.
