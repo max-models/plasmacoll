@@ -82,4 +82,4 @@ experiment: every step accelerates the charged species before colliding them, an
 $N/2$ markers whenever ionization grows it beyond $N$.
 
 Next: [the null-collision method](/plasmacoll/guides/null-collision-method/), or the
-[tutorials](/plasmacoll/tutorials/).
+[examples](/plasmacoll/examples/).

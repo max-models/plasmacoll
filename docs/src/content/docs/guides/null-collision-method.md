@@ -75,7 +75,7 @@ retabulates the bound.
 A marker collides at most once per step, and products do not collide in the step that created
 them. Rates are therefore correct to first order in $\nu_{\max}\Delta t$. A population that
 ionizes at constant $\nu$ grows by $(1 + P)$ per step instead of $e^{\nu\Delta t}$, which
-[tutorial 3](/plasmacoll/tutorials/03-ionization-attachment/) measures. Keep
+[the ionization example](/plasmacoll/examples/03-ionization-attachment/) measures. Keep
 $\nu_{\max}\Delta t \lesssim 0.1$ (a few percent error on the rate), or collide every $m$ steps
 with $m\Delta t$ only if $\nu_{\max} m\Delta t$ stays that small.
 

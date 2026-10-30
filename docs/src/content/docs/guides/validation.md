@@ -57,8 +57,8 @@ $\sigma_m = 4\varepsilon^{-1/2}\,\text{Å}^2$ and an ionization of
 $0.1(\varepsilon - 15.6)\,\text{Å}^2/\mathrm{eV}$ with $m_e/M = 10^{-3}$, as restated by Flynn
 et al., J. Phys. D 57, 255204 (2024). At 1000 Td BOLOS on the same grid differs by 1 %, and
 converges to the result of `solve_eedf` as its grid is refined. The
-[tutorial](/plasmacoll/tutorials/07-two-term-boltzmann/) prints the Reid comparison.
+[example](/plasmacoll/examples/07-two-term-boltzmann/) prints the Reid comparison.
 
 The whole suite runs on NumPy and on cunumpy's stand-in for CuPy in CI, and the combined
-coverage of the two runs is 100 %. The [tutorials](/plasmacoll/tutorials/) plot several of these
+coverage of the two runs is 100 %. The [examples](/plasmacoll/examples/) plot several of these
 comparisons.
