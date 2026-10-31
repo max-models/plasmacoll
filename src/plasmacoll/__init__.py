@@ -5,7 +5,7 @@ arrays, through :mod:`cunumpy`) with prescribed Maxwellian neutral backgrounds:
 elastic and backscatter collisions, excitation, ionization, attachment,
 detachment, charge transfer, dissociation and the charge changes of fast beams, with cross sections from tables,
 LXCat files or functions (process sets for argon and sputtered metals in
-:mod:`plasmacoll.argon` and :mod:`plasmacoll.metals`). It is the collision step of a particle-in-cell code,
+:mod:`plasmacoll.argon` and :mod:`plasmacoll.metals`, caesium in hydrogen in :mod:`plasmacoll.caesium`). It is the collision step of a particle-in-cell code,
 or with :class:`ZeroDReactor` a homogeneous reactor (optionally in an electric
 field) for testing cross-section sets. :func:`solve_eedf` solves the two-term
 Boltzmann equation for the same processes, for rates and transport
@@ -50,6 +50,11 @@ from plasmacoll.boltzmann import (
     SwarmTable,
     solve_eedf,
     swarm_table,
+)
+from plasmacoll.caesium import (
+    caesium_collisions,
+    caesium_ionization_cross_section,
+    electron_background,
 )
 from plasmacoll.charge_states import (
     ChargeStateTransitions,
@@ -127,8 +132,11 @@ __all__ = [
     "argon_ion_cross_sections",
     "argon_ion_processes",
     "boltzmann_level_populations",
+    "caesium_collisions",
+    "caesium_ionization_cross_section",
     "eedf_rate_coefficient",
     "elastic_from_lxcat",
+    "electron_background",
     "estimate_electronegativity",
     "find_lxcat_process",
     "hydrogen_atom_processes",
