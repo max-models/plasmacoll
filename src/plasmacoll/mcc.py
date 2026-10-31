@@ -790,6 +790,111 @@ class MonteCarloCollisions:
             candidate_mask &= xp.asarray(alive, dtype=bool)
         return xp.where(candidate_mask)[0]
 
+    def _collide_candidates(
+        self,
+        species: str,
+        positions: Array,
+        velocities: Array,
+        weights: Array,
+        candidates: Array,
+        nu_max: float | None,
+        removed: Array,
+        created: dict[str, list[NewMarkers]],
+        diagnostics: MCCDiagnostics,
+    ) -> None:
+        """Collide the ``candidates`` with a real or the null process.
+
+        The process is drawn against ``nu_max``, so a candidate whose real
+        frequency is lower may draw the null collision; with ``nu_max=None``
+        every candidate collides with a real process.
+        """
+        processes = self._processes[species]
+        num_candidates = int(candidates.shape[0])
+        incident = velocities[candidates]
+
+        # One relative velocity and speed per process, batched into a single
+        # (num_processes, num_candidates, ...) pair of array operations rather
+        # than a Python loop of small ones. Only the cross-section lookup (a
+        # different table per process) runs once per process.
+        backgrounds_used = list(
+            dict.fromkeys(process.background for process in processes)
+        )
+        background_index = {name: index for index, name in enumerate(backgrounds_used)}
+        candidate_positions = positions[candidates]
+        neutral_stack = xp.stack(
+            [
+                self._backgrounds[name].sample_velocities(
+                    self._rng, num_candidates, candidate_positions
+                )
+                for name in backgrounds_used
+            ],
+        )
+        process_background = [
+            background_index[process.background] for process in processes
+        ]
+        # Thinning: the bound uses each background's largest density, and a
+        # marker's real frequency the density where it is.
+        density_factors = [
+            self._backgrounds[name].density_factor(candidate_positions)
+            for name in backgrounds_used
+        ]
+        relative_stack = incident[None, :, :] - neutral_stack[process_background]
+        speed_stack = xp.sqrt(xp.sum(relative_stack**2, axis=-1))
+
+        frequencies = [
+            self.process_frequency(
+                species,
+                process,
+                speed_stack[index],
+                density_factors[process_background[index]],
+            )
+            for index, process in enumerate(processes)
+        ]
+        # Without a bound every candidate collides: the process is drawn in
+        # proportion to its frequency where the marker is.
+        scale = sum(frequencies) if nu_max is None else nu_max
+        cumulative = xp.zeros(num_candidates)
+        selection = self._rng.random(num_candidates) * scale
+        chosen = xp.full(num_candidates, -1, dtype=int)
+        for index, frequency in enumerate(frequencies):
+            cumulative = cumulative + frequency
+            chosen = xp.where((chosen < 0) & (selection < cumulative), index, chosen)
+        if nu_max is None:
+            # Rounding can leave a draw just above the sum: the last process.
+            chosen = xp.where(chosen < 0, len(processes) - 1, chosen)
+            nu_max = xp.inf
+        violations = int(xp.count_nonzero(cumulative > nu_max * (1.0 + 1e-9)))
+        diagnostics.bound_violations = violations
+        if violations and not self._warned_bound:
+            warnings.warn(
+                f"{violations} {species} marker(s) exceeded the null-collision "
+                "frequency bound; collision rates are underestimated.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            self._warned_bound = True
+
+        diagnostics.null_collisions = int(xp.count_nonzero(chosen < 0))
+        for index, process in enumerate(processes):
+            local = xp.where(chosen == index)[0]
+            diagnostics.counts[process.name] = int(local.shape[0])
+            if local.shape[0] == 0:
+                continue
+            with sp.region("plasmacoll.collide_process", tags=PROFILE_TAGS):
+                self._collide_process(
+                    species=species,
+                    process=process,
+                    marker_indices=candidates[local],
+                    positions=positions,
+                    velocities=velocities,
+                    weights=weights,
+                    neutral_velocities=neutral_stack[process_background[index]][local],
+                    removed=removed,
+                    created=created,
+                    relative=relative_stack[index][local],
+                    speed=speed_stack[index][local],
+                )
+
     @sp.profile("plasmacoll.collide", tags=PROFILE_TAGS)
     def collide(
         self,
@@ -868,79 +973,17 @@ class MonteCarloCollisions:
             return MCCResult(velocities, removed, created, diagnostics)
         candidates = xp.asarray(candidates)
 
-        incident = velocities[candidates]
-
-        # One relative velocity and speed per process, batched into a single
-        # (num_processes, num_candidates, ...) pair of array operations rather
-        # than a Python loop of small ones. Only the cross-section lookup (a
-        # different table per process) runs once per process.
-        backgrounds_used = list(
-            dict.fromkeys(process.background for process in processes)
+        self._collide_candidates(
+            species,
+            positions,
+            velocities,
+            weights,
+            candidates,
+            nu_max,
+            removed,
+            created,
+            diagnostics,
         )
-        background_index = {name: index for index, name in enumerate(backgrounds_used)}
-        candidate_positions = positions[candidates]
-        neutral_stack = xp.stack(
-            [
-                self._backgrounds[name].sample_velocities(
-                    self._rng, num_candidates, candidate_positions
-                )
-                for name in backgrounds_used
-            ],
-        )
-        process_background = [
-            background_index[process.background] for process in processes
-        ]
-        # Thinning: the bound uses each background's largest density, and a
-        # marker's real frequency the density where it is.
-        density_factors = [
-            self._backgrounds[name].density_factor(candidate_positions)
-            for name in backgrounds_used
-        ]
-        relative_stack = incident[None, :, :] - neutral_stack[process_background]
-        speed_stack = xp.sqrt(xp.sum(relative_stack**2, axis=-1))
-
-        cumulative = xp.zeros(num_candidates)
-        selection = self._rng.random(num_candidates) * nu_max
-        chosen = xp.full(num_candidates, -1, dtype=int)
-        for index, process in enumerate(processes):
-            cumulative = cumulative + self.process_frequency(
-                species,
-                process,
-                speed_stack[index],
-                density_factors[process_background[index]],
-            )
-            chosen = xp.where((chosen < 0) & (selection < cumulative), index, chosen)
-        violations = int(xp.count_nonzero(cumulative > nu_max * (1.0 + 1e-9)))
-        diagnostics.bound_violations = violations
-        if violations and not self._warned_bound:
-            warnings.warn(
-                f"{violations} {species} marker(s) exceeded the null-collision "
-                "frequency bound; collision rates are underestimated.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            self._warned_bound = True
-
-        diagnostics.null_collisions = int(xp.count_nonzero(chosen < 0))
-        for index, process in enumerate(processes):
-            local = xp.where(chosen == index)[0]
-            diagnostics.counts[process.name] = int(local.shape[0])
-            if local.shape[0] == 0:
-                continue
-            with sp.region("plasmacoll.collide_process", tags=PROFILE_TAGS):
-                self._collide_process(
-                    species=species,
-                    process=process,
-                    marker_indices=candidates[local],
-                    positions=positions,
-                    velocities=velocities,
-                    weights=weights,
-                    neutral_velocities=neutral_stack[process_background[index]][local],
-                    removed=removed,
-                    created=created,
-                    relative=relative_stack[index][local],
-                    speed=speed_stack[index][local],
-                )
         return MCCResult(velocities, removed, created, diagnostics)
 
     @sp.profile("plasmacoll.collide_species", tags=PROFILE_TAGS)
@@ -1003,6 +1046,84 @@ class MonteCarloCollisions:
                 weights=xp.concatenate([batch.weights for batch in batches]),
             )
         return diagnostics
+
+    def attenuation(self, species: str, positions: Array, velocities: Array) -> Array:
+        """Return ``sum_k n_k(x) sigma_k(E)`` (1/m), the inverse mean free path.
+
+        For fast markers, such as a beam, whose speed is far above the
+        neutrals': the targets are taken at rest. ``positions`` is ``(N, ndim)``
+        and ``velocities`` ``(N, 3)``; the free path of a marker flying straight
+        follows from integrating this along its path.
+        """
+        velocities = xp.asarray(velocities, dtype=float)
+        speed = xp.sqrt(xp.sum(velocities**2, axis=-1))
+        total = xp.zeros(velocities.shape[0])
+        safe = xp.where(speed > 0.0, speed, 1.0)
+        for process in self._processes.get(species, ()):
+            factor = self._backgrounds[process.background].density_factor(positions)
+            total = total + self.process_frequency(species, process, speed, factor)
+        return xp.where(speed > 0.0, total / safe, 0.0)
+
+    @sp.profile("plasmacoll.collide_now", tags=PROFILE_TAGS)
+    def collide_now(
+        self,
+        species: str,
+        positions: Array,
+        velocities: Array,
+        weights: Array,
+        indices: Array | None = None,
+        in_place: bool = False,
+    ) -> MCCResult:
+        """Collide the markers ``indices`` (all if None) now, each with a real process.
+
+        For event-driven transport, where a marker is moved to the point of its
+        next collision (a free path sampled from :meth:`attenuation`) and then
+        collides for certain. The process is drawn in proportion to its
+        frequency at the marker's position; the kinematics are those of
+        :meth:`collide`.
+
+        Raises:
+            ValueError: If ``velocities`` does not have three components, or a
+                selected marker has no process with a nonzero frequency.
+        """
+        if not in_place:
+            velocities = xp.array(velocities, dtype=float, copy=True)
+        num_markers = int(velocities.shape[0])
+        removed = xp.zeros(num_markers, dtype=bool)
+        created: dict[str, list[NewMarkers]] = {}
+        diagnostics = MCCDiagnostics()
+        candidates = (
+            xp.arange(num_markers)
+            if indices is None
+            else xp.asarray(indices, dtype=int)
+        )
+        if candidates.shape[0] == 0 or not self._processes.get(species):
+            return MCCResult(velocities, removed, created, diagnostics)
+        if velocities.ndim != 2 or velocities.shape[1] != 3:
+            raise ValueError(
+                "Monte Carlo collisions need three velocity components per marker, "
+                f"got shape {tuple(velocities.shape)}"
+            )
+        if bool(
+            xp.any(
+                self.attenuation(species, positions[candidates], velocities[candidates])
+                <= 0.0
+            )
+        ):
+            raise ValueError(f"a {species} marker has no collision where it is")
+        diagnostics.candidates = int(candidates.shape[0])
+        self._collide_candidates(
+            species,
+            positions,
+            velocities,
+            weights,
+            candidates,
+            None,
+            removed,
+            created,
+            diagnostics,
+        )
+        return MCCResult(velocities, removed, created, diagnostics)
 
     @property
     def processes(self) -> dict[str, tuple[CollisionProcess, ...]]:
