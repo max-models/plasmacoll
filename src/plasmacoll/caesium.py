@@ -37,6 +37,7 @@ endothermic by about 11.5 eV and left out, as is the ionization of Cs+ (23.2 eV)
 from __future__ import annotations
 
 import math
+from typing import Any
 
 from plasmacoll.background import NeutralBackground, Profile
 from plasmacoll.constants import ATOMIC_MASS, ELECTRON_MASS, ELEMENTARY_CHARGE
@@ -199,7 +200,7 @@ def caesium_collisions(
     electrons: NeutralBackground,
     gas: NeutralBackground,
     seed: int | None = None,
-    **kwargs: object,
+    **kwargs: Any,
 ) -> MonteCarloCollisions:
     """Return the collisions of ``Cs`` and ``Cs+`` markers in a hydrogen plasma.
 
@@ -223,5 +224,5 @@ def caesium_collisions(
             "Cs+": (caesium_ion_h2_elastic_process(gas.name),),
         },
         seed=seed,
-        **kwargs,  # type: ignore[arg-type]
+        **kwargs,
     )
