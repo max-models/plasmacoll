@@ -78,6 +78,17 @@ _NO_ENERGY_LOSS = (
     "beam_ionization",
 )
 _IONIZATION_KINDS = ("ionization", "dissociative_ionization")
+#: The kinds that remove one particle of the background per collision: the
+#: ionized, attached-to or dissociated neutral. Charge transfer swaps a neutral
+#: for an ion and leaves the count; stripping and detachment act on the incident.
+_CONSUMING_KINDS = (
+    "ionization",
+    "dissociative_ionization",
+    "beam_ionization",
+    "attachment",
+    "dissociative_attachment",
+    "dissociation",
+)
 
 
 @dataclass(frozen=True)
@@ -190,6 +201,17 @@ class CollisionProcess:
     def is_ionization(self) -> bool:
         """Return whether the process creates an electron-ion pair."""
         return self.kind in _IONIZATION_KINDS
+
+    @property
+    def consumes_neutral(self) -> bool:
+        """Return whether each collision removes one particle of the background.
+
+        True for the ionizing, attaching and dissociating kinds, whose target
+        neutral becomes an ion, a negative ion or fragments; these are the
+        collisions that deplete a gas. Charge transfer turns a neutral into an
+        ion and an ion into a neutral, so it leaves the count unchanged.
+        """
+        return self.kind in _CONSUMING_KINDS
 
     @property
     def loss(self) -> float:

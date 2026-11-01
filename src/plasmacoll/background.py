@@ -14,6 +14,12 @@ a plasma species on a grid, which makes that species a collision target (the
 electrons of ``e + H- -> H + 2e``). The collision operator scales the
 frequency bound of such a background by the current ``max_factor`` instead of
 tabulating it again.
+
+A gas that the collisions deplete is the same thing with the density of the
+gas itself on the grid: the collision operator reports the neutrals each step
+consumed (:attr:`~plasmacoll.mcc.MCCResult.consumed`, per background, with
+the positions and weights of the events), the gas model subtracts them from
+its density and refills, and the :class:`DynamicProfile` reads that density.
 """
 
 from __future__ import annotations

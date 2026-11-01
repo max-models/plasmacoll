@@ -165,12 +165,19 @@ class MCCResult:
             charge transfer and their dissociative variants).
         created: New markers per product species, one batch per process.
         diagnostics: The collision counters.
+        consumed: The background particles removed by the collisions, per
+            background name: one batch per consuming process
+            (:attr:`~plasmacoll.process.CollisionProcess.consumes_neutral`)
+            with the positions of the events, the velocities the neutrals had
+            and the weights (physical particles) taken from the gas. What a
+            depleting gas model subtracts from its density.
     """
 
     velocities: Array
     removed: Array
     created: dict[str, list[NewMarkers]]
     diagnostics: MCCDiagnostics
+    consumed: dict[str, list[NewMarkers]] = field(default_factory=dict)
 
 
 def make_rng(seed: int | None = None, rank: int = 0) -> Any:
@@ -641,14 +648,24 @@ class MonteCarloCollisions:
         created: dict[str, list[NewMarkers]],
         relative: Array,
         speed: Array,
+        consumed: dict[str, list[NewMarkers]] | None = None,
     ) -> None:
         """Apply the kinematics of one process to the selected markers.
 
         ``relative`` (incident - neutral) and ``speed`` (its norm) are already
         known from candidate selection, so they are passed in rather than
-        recomputed.
+        recomputed. A process that consumes its neutral records the events in
+        ``consumed`` under the background's name.
         """
         num = int(marker_indices.shape[0])
+        if consumed is not None and process.consumes_neutral:
+            consumed.setdefault(process.background, []).append(
+                NewMarkers(
+                    xp.array(positions[marker_indices], copy=True),
+                    xp.array(neutral_velocities, copy=True),
+                    xp.array(weights[marker_indices], copy=True),
+                )
+            )
         mass = self._masses[species]
         neutral_mass = self._backgrounds[process.background].mass
         total_mass = mass + neutral_mass
@@ -810,6 +827,7 @@ class MonteCarloCollisions:
         removed: Array,
         created: dict[str, list[NewMarkers]],
         diagnostics: MCCDiagnostics,
+        consumed: dict[str, list[NewMarkers]] | None = None,
     ) -> None:
         """Collide the ``candidates`` with a real or the null process.
 
@@ -902,6 +920,7 @@ class MonteCarloCollisions:
                     created=created,
                     relative=relative_stack[index][local],
                     speed=speed_stack[index][local],
+                    consumed=consumed,
                 )
 
     @sp.profile("plasmacoll.collide", tags=PROFILE_TAGS)
@@ -932,7 +951,8 @@ class MonteCarloCollisions:
 
         Returns:
             The new velocities, the removed markers, the created markers per
-            product species and the collision counters.
+            product species, the collision counters and the neutrals consumed
+            per background.
 
         Raises:
             ValueError: If ``velocities`` does not have three components.
@@ -942,6 +962,7 @@ class MonteCarloCollisions:
         num_markers = int(velocities.shape[0])
         removed = xp.zeros(num_markers, dtype=bool)
         created: dict[str, list[NewMarkers]] = {}
+        consumed: dict[str, list[NewMarkers]] = {}
         diagnostics = MCCDiagnostics()
         processes = self._processes.get(species, ())
         if num_markers == 0 or dt <= 0.0 or not processes:
@@ -993,8 +1014,9 @@ class MonteCarloCollisions:
             removed,
             created,
             diagnostics,
+            consumed,
         )
-        return MCCResult(velocities, removed, created, diagnostics)
+        return MCCResult(velocities, removed, created, diagnostics, consumed)
 
     @sp.profile("plasmacoll.collide_species", tags=PROFILE_TAGS)
     def collide_species(
@@ -1002,6 +1024,7 @@ class MonteCarloCollisions:
         species: Mapping[str, MarkerSet],
         dt: float | Mapping[str, float],
         incident: Iterable[str] | None = None,
+        consumed: dict[str, list[NewMarkers]] | None = None,
     ) -> dict[str, MCCDiagnostics]:
         """Collide every species in ``species`` for one time step ``dt`` (s), in place.
 
@@ -1018,6 +1041,9 @@ class MonteCarloCollisions:
                 cycle of a species pushed only every few steps).
             incident: The species that collide now (all with processes if
                 None); the others in ``species`` only receive products.
+            consumed: If given, the neutrals the collisions consumed are
+                appended to it per background name (see
+                :attr:`MCCResult.consumed`), for a gas model that depletes.
 
         Returns:
             The collision counters of every species that collided.
@@ -1045,6 +1071,9 @@ class MonteCarloCollisions:
                 markers.remove(result.removed)
             for product, batches in result.created.items():
                 pending.setdefault(product, []).extend(batches)
+            if consumed is not None:
+                for background, batches in result.consumed.items():
+                    consumed.setdefault(background, []).extend(batches)
             diagnostics[name] = result.diagnostics
 
         for product, batches in pending.items():
@@ -1101,6 +1130,7 @@ class MonteCarloCollisions:
         num_markers = int(velocities.shape[0])
         removed = xp.zeros(num_markers, dtype=bool)
         created: dict[str, list[NewMarkers]] = {}
+        consumed: dict[str, list[NewMarkers]] = {}
         diagnostics = MCCDiagnostics()
         candidates = (
             xp.arange(num_markers)
@@ -1132,8 +1162,9 @@ class MonteCarloCollisions:
             removed,
             created,
             diagnostics,
+            consumed,
         )
-        return MCCResult(velocities, removed, created, diagnostics)
+        return MCCResult(velocities, removed, created, diagnostics, consumed)
 
     @property
     def processes(self) -> dict[str, tuple[CollisionProcess, ...]]:
