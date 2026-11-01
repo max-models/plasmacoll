@@ -353,8 +353,6 @@ class MonteCarloCollisions:
         ``density_factor`` scales the reference densities (None: each
         background's largest). Returns host arrays ``(speeds, running_max)``.
         """
-        if not processes:
-            return np.zeros(1), np.zeros(1)
         cap = max(
             float(self._speed_of(species, p, p.cross_section.max_energy))
             for p in processes
@@ -376,29 +374,31 @@ class MonteCarloCollisions:
 
     @sp.profile("plasmacoll.tabulate_bounds", tags=PROFILE_TAGS)
     def _tabulate_bounds(self) -> None:
-        """Tabulate the collision-frequency bound of every species.
+        """Tabulate the collision-frequency bound of every species and background.
 
-        The processes on backgrounds with a fixed profile share one table at
-        their largest density. Each background with a
-        :class:`~plasmacoll.background.DynamicProfile` gets a table of its own
-        at the reference density, scaled by the profile's current
-        ``max_factor`` in :meth:`frequency_bound`, so the bound follows the
-        profile without being tabulated again.
+        Each background gets a table of its own, so that :meth:`collide` can
+        bound the processes on a slow gas and on a fast background (such as
+        electrons) at their own relative speeds. A background with a fixed
+        profile is tabulated at its largest density; one with a
+        :class:`~plasmacoll.background.DynamicProfile` at the reference
+        density, scaled by the profile's current ``max_factor`` in
+        :meth:`frequency_bound`, so the bound follows the profile without being
+        tabulated again.
         """
         self._frequency_tables = {}
         for species, processes in self._processes.items():
-            static = [p for p in processes if not self._is_dynamic(p.background)]
-            dynamic: dict[str, list[CollisionProcess]] = {}
+            groups: dict[str, list[CollisionProcess]] = {}
             for process in processes:
-                if self._is_dynamic(process.background):
-                    dynamic.setdefault(process.background, []).append(process)
-            self._frequency_tables[species] = (
-                (static, self._running_frequency_bound(species, static, None)),
-                {
-                    name: (group, self._running_frequency_bound(species, group, 1.0))
-                    for name, group in dynamic.items()
-                },
-            )
+                groups.setdefault(process.background, []).append(process)
+            self._frequency_tables[species] = {
+                name: (
+                    group,
+                    self._running_frequency_bound(
+                        species, group, 1.0 if self._is_dynamic(name) else None
+                    ),
+                )
+                for name, group in groups.items()
+            }
 
     def __init__(
         self,
@@ -495,37 +495,46 @@ class MonteCarloCollisions:
             total = total + self.process_frequency(species, process, relative_speed)
         return total
 
-    def frequency_bound(self, species: str, max_relative_speed: float) -> float:
+    def frequency_bound(
+        self, species: str, max_relative_speed: float | Mapping[str, float]
+    ) -> float:
         """Return ``nu_max`` (1/s) valid for relative speeds up to ``max_relative_speed``.
 
-        The bound is the larger of the running maximum of the tabulated
-        frequency over grid speeds up to ``max_relative_speed`` and the
-        frequency at ``max_relative_speed`` itself, raised by ``bound_safety``
-        for maxima between grid points. Beyond the last table point every
-        cross section is constant and the frequency grows linearly with speed,
-        which the direct evaluation at ``max_relative_speed`` covers.
-        """
-        if species not in self._frequency_tables:
-            return 0.0
-        speed = xp.asarray([float(max_relative_speed)])
+        The bound is the sum over backgrounds of the larger of the running
+        maximum of the tabulated frequency over grid speeds up to the largest
+        relative speed and the frequency at that speed itself, raised by
+        ``bound_safety`` for maxima between grid points. Beyond the last table
+        point every cross section is constant and the frequency grows linearly
+        with speed, which the direct evaluation covers.
 
-        def table_bound(processes, table, density_factor):
-            speeds, running_max = table
-            index = int(np.searchsorted(speeds, max_relative_speed, side="right")) - 1
+        Args:
+            species: The incident species.
+            max_relative_speed: The largest relative speed in m/s, one for all
+                backgrounds or one per background name.
+        """
+        tables = self._frequency_tables.get(species)
+        if not tables:
+            return 0.0
+        bound = 0.0
+        # A sum of bounds bounds the sum.
+        for name, (processes, (speeds, running_max)) in tables.items():
+            limit = float(
+                max_relative_speed[name]
+                if isinstance(max_relative_speed, Mapping)
+                else max_relative_speed
+            )
+            dynamic = self._is_dynamic(name)
+            factor = self._backgrounds[name].max_density_factor if dynamic else 1.0
+            if factor <= 0.0:
+                continue
+            index = int(np.searchsorted(speeds, limit, side="right")) - 1
             tabulated = float(running_max[index]) if index >= 0 else 0.0
             direct = float(
-                self._frequency_of(species, processes, speed, density_factor)[0]
+                self._frequency_of(
+                    species, processes, xp.asarray([limit]), 1.0 if dynamic else None
+                )[0]
             )
-            return max(tabulated, direct)
-
-        (static, table), dynamic = self._frequency_tables[species]
-        bound = table_bound(static, table, None) if static else 0.0
-        # A sum of bounds bounds the sum: each dynamic background at its
-        # current largest factor (the table holds the reference density).
-        for name, (processes, dynamic_table) in dynamic.items():
-            factor = self._backgrounds[name].max_density_factor
-            if factor > 0.0:
-                bound += factor * table_bound(processes, dynamic_table, 1.0)
+            bound += factor * max(tabulated, direct)
         return self._bound_safety * bound
 
     def _secondary_fraction(self, process: CollisionProcess, residual: Array) -> Array:
@@ -945,13 +954,14 @@ class MonteCarloCollisions:
 
         # Dead rows only raise the bound, which keeps it valid.
         max_speed = float(np.sqrt(_max_squared_speed(velocities)))
-        # The fastest neutral partner: flow plus eight thermal speeds.
-        max_neutral_speed = max(
-            self._backgrounds[p.background].drift_speed
-            + 8.0 * self._backgrounds[p.background].max_thermal_speed
-            for p in processes
-        )
-        nu_max = self.frequency_bound(species, max_speed + max_neutral_speed)
+        # The fastest partner of each background: flow plus eight thermal speeds.
+        max_relative_speeds = {
+            name: max_speed
+            + background.drift_speed
+            + 8.0 * background.max_thermal_speed
+            for name, background in self._backgrounds.items()
+        }
+        nu_max = self.frequency_bound(species, max_relative_speeds)
         if nu_max <= 0.0:
             return MCCResult(velocities, removed, created, diagnostics)
 
