@@ -1,5 +1,5 @@
 ---
-title: Use in a particle-in-cell code
+title: Particle-in-cell use
 description: Plugging your own particle containers into the operator, MPI and GPUs.
 sidebar:
   order: 4

@@ -5,6 +5,7 @@ The cross sections are model gases or synthetic, not physical data.
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import io
 import math
@@ -22,12 +23,28 @@ from plasmacoll import (
     solve_eedf,
     swarm_table,
 )
-from plasmacoll.boltzmann import GAMMA, _build, _log_slope, _matrix, _moments
+from plasmacoll.boltzmann import (
+    GAMMA,
+    _build,
+    _log_slope,
+    _matrix,
+    _moments,
+    _sigma_superelastic,
+    _superelastic_channel,
+)
 from plasmacoll.constants import (
     ATOMIC_MASS,
     ELECTRON_MASS,
     TOWNSEND,
     kelvin_to_ev,
+)
+from plasmacoll.mcc import MonteCarloCollisions
+from plasmacoll.tests.unit._lokib_models import (
+    GAS_TEMPERATURE,
+    plasmacoll_model,
+    rotational_populations,
+    rotational_state,
+    vibrational_populations,
 )
 
 M_HE = 4.0 * ATOMIC_MASS
@@ -346,6 +363,116 @@ def test_strong_attachment_keeps_the_effective_cross_section_positive() -> None:
     assert solution.mobility > 0.0
 
 
+# --- levels and superelastic collisions ----------------------------------------------
+
+
+def _thermal_molecule(temperature: float = GAS_TEMPERATURE):
+    """The H2-like gas of the LoKI-B test with every level at ``temperature`` (K)."""
+    processes, mixture, states = plasmacoll_model("Mol")
+    v0, v1 = vibrational_populations(temperature)
+    states = {"Mol(X,v=0)": ("Mol", v0), "Mol(X,v=1)": ("Mol", v1)}
+    for j, population in enumerate(rotational_populations(temperature)):
+        states[rotational_state(j)] = ("Mol", v0 * float(population))
+    return processes, mixture, states
+
+
+def test_levels_at_the_gas_temperature_keep_the_electrons_maxwellian() -> None:
+    """Without a field, detailed balance: F0 ~ exp(-eps/kT) and k x_l = k_sup x_u."""
+    processes, mixture, states = _thermal_molecule()
+    solution = solve_eedf(processes, mixture, 0.0, states=states)
+    temperature = mixture[0].temperature
+    expected = normalised(np.exp(-solution.energy / temperature), solution.energy_edges)
+    visible = expected > 1e-8 * expected.max()
+    assert solution.eepf[visible] == pytest.approx(expected[visible], rel=1e-6)
+    for process in processes:
+        if process.upper_state is None:
+            continue
+        up = solution.rate_coefficients[f"{process.name} (superelastic)"]
+        assert states[process.background][1] * solution.rate_coefficients[
+            process.name
+        ] == pytest.approx(states[process.upper_state][1] * up, rel=1e-8)
+    # the superelastic collisions give back what the excitations take
+    assert solution.power["field"] == 0.0
+    assert solution.power["superelastic"] == pytest.approx(
+        solution.power["inelastic"], rel=1e-8
+    )
+    assert abs(solution.power_balance) < 1e-2
+
+
+def test_hot_vibrations_heat_the_electrons() -> None:
+    processes, mixture, states = plasmacoll_model("Mol")
+    hot = solve_eedf(processes, mixture, 1.0, states=states)
+    cold = solve_eedf(
+        [dataclasses.replace(p, upper_state=None) for p in processes],
+        mixture,
+        1.0,
+        states=states,
+    )
+    assert hot.mean_energy > 1.3 * cold.mean_energy
+    assert hot.power["superelastic"] > hot.power["field"]
+    assert cold.power["superelastic"] == 0.0
+    assert not any("superelastic" in name for name in cold.rate_coefficients)
+    assert abs(hot.power_balance) < 1e-3
+
+
+def test_the_superelastic_cross_section_follows_from_detailed_balance() -> None:
+    sigma = ramp(1e-20, 0.5)
+    process = CollisionProcess(
+        "excitation",
+        "lower",
+        sigma,
+        upper_state="upper",
+        statistical_weight_ratio=3.0,
+    )
+    energy = np.array([0.01, 0.3, 2.0])
+    expected = (1.0 + 0.5 / energy) * 1e-20 * energy / 3.0
+    assert _sigma_superelastic(process, energy) == pytest.approx(expected)
+    edges = np.linspace(0.0, 4.0, 41)
+    channel = _superelastic_channel(process, 0.2, edges)
+    assert channel.loss == -0.5
+    assert channel.name.endswith("(superelastic)")
+    # products land 0.5 eV (five cells) higher, and stay on the grid
+    assert np.all(channel.target == channel.source + 5)
+    assert channel.energy.max() < 4.0 - 0.5
+    # a gain larger than the grid leaves no collisions
+    assert _superelastic_channel(process, 0.2, edges[:5]).energy.size == 0
+
+
+@pytest.mark.parametrize(
+    ("states", "message"),
+    [
+        ({"gas": ("gas", 0.5)}, "name of a gas"),
+        ({"level": ("other", 0.5)}, "no gas 'other'"),
+        ({"level": ("gas", 1.5)}, r"\[0, 1\]"),
+    ],
+)
+def test_invalid_states_are_rejected(states, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        solve_eedf(REID, [gas()], 10.0, 0.0, states=states)
+
+
+def test_superelastic_processes_are_checked() -> None:
+    with pytest.raises(ValueError, match="needs an excitation"):
+        CollisionProcess(
+            "elastic", "gas", CrossSection.constant(1e-20), upper_state="gas*"
+        )
+    with pytest.raises(ValueError, match="statistical_weight_ratio"):
+        CollisionProcess(
+            "excitation",
+            "gas",
+            ramp(1e-20, 1.0),
+            upper_state="gas*",
+            statistical_weight_ratio=0.0,
+        )
+    reversible = CollisionProcess(
+        "excitation", "gas", ramp(1e-20, 1.0), name="up", upper_state="gas*"
+    )
+    with pytest.raises(ValueError, match="no gas or state 'gas\\*'"):
+        solve_eedf([*REID, reversible], [gas()], 10.0, 0.0)
+    with pytest.raises(ValueError, match="only in plasmacoll.boltzmann"):
+        MonteCarloCollisions({"e": ELECTRON_MASS}, [gas()], {"e": [reversible]})
+
+
 # --- inputs and outputs --------------------------------------------------------------
 
 
@@ -409,7 +536,11 @@ def test_a_distribution_that_drops_at_a_threshold_ends_the_grid_there() -> None:
         (REID, {"num_cells": 5}, "num_cells"),
         (REID, {"max_energy": 0.0}, "max_energy"),
         (REID, {"mixture": []}, "positive density"),
-        ([elastic(CrossSection.constant(1e-20), "other")], {}, "no gas 'other'"),
+        (
+            [elastic(CrossSection.constant(1e-20), "other")],
+            {},
+            "no gas or state 'other'",
+        ),
         ([REID[0], REID[0]], {}, "unique"),
         (
             [CollisionProcess("backscatter", "gas", CrossSection.constant(1e-20))],

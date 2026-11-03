@@ -42,8 +42,17 @@ make test-cupy  # CUNUMPY_FAKE_CUPY=1 CUNUMPY_BACKEND=cupy pytest
 
 ## Optional extras
 
-| Extra  | Installs                                                           |
-| ------ | ------------------------------------------------------------------ |
-| `test` | `pytest` and `pytest-cov`                                          |
-| `docs` | the notebook runner, matplotlib and griffe for the API reference   |
-| `dev`  | ruff, pyright, ty and pre-commit, plus the `test` and `docs` extras |
+| Extra   | Installs                                                            |
+| ------- | ------------------------------------------------------------------- |
+| `units` | astropy, for settings given as quantities (`300 * u.K`, `"1 ns"`)   |
+| `test`  | `pytest`, `pytest-cov` and astropy                                  |
+| `docs`  | the notebook runner, matplotlib and griffe for the API reference    |
+| `dev`   | ruff, pyright, ty and pre-commit, plus the `test` and `docs` extras |
+
+The physical settings (densities, temperatures, masses, energies, cross sections, time steps)
+take astropy Quantities or strings such as `"300 K"` as well as plain numbers in their documented
+units; astropy is imported only when one is given:
+
+```bash
+pip install "plasmacoll[units]"
+```

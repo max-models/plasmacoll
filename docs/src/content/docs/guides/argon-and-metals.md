@@ -19,6 +19,7 @@ target is sputtered, the ionization of the metal atoms. `plasmacoll.argon` and
 | Ar⁺ + Ar from LXCat                      | LXCat Phelps database (tables of the 1994 fits)          | no: download the file, then `argon_ion_processes`   |
 | e + Cu                                  | LXCat SIGLO database (Tkachev et al., Laser Phys. 17, 775 (2007)) | no: download the file, then `read_lxcat`   |
 | e + Cu, Cu⁺, Ti, Ti⁺ ionization          | Lotz, Z. Phys. 206, 205 (1967); NIST ionization energies | yes, analytic (`metal_ionization_cross_section`)    |
+| e + Cs ionization (6s), Cs + H₂, Cs⁺ + H₂ | Lotz (1968); hard spheres (placeholder); Langevin       | yes, analytic (`plasmacoll.caesium`, see the Caesium in hydrogen example) |
 
 LXCat's [redistribution policy](https://us.lxcat.net/instructions/redistribution.php) does not
 allow third parties to redistribute its data; the contributors keep ownership of their databases.

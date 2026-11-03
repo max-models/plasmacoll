@@ -63,7 +63,7 @@ cross section instead.
 
 plasmacoll does not ship tabulated cross-section data: LXCat does not allow third parties to
 redistribute its data. Download sets from [LXCat](https://lxcat.net) and cite the databases as
-their terms of use require, or use tables from the literature with `from_table`. The tutorials
+their terms of use require, or use tables from the literature with `from_table`. The examples
 and tests use synthetic tables and Maxwell molecules, and they say so wherever they appear.
 Published analytic fits are included where there is no set to download, or for convenience:
 Phelps' Ar⁺ + Ar cross sections and the Lotz ionization of metals, see
@@ -71,7 +71,8 @@ Phelps' Ar⁺ + Ar cross sections and the Lotz ionization of metals, see
 and Samm (2003) in `plasmacoll.janev` and the elastic e + H and e + H₂ fits of Park et al. (2022)
 in `plasmacoll.hydrogen_elastic`, the electron excitation and ionization of atomic hydrogen
 H(n) between any principal quantum numbers (the same report, section 2.1, with Johnson's 1972
-formulas where it has no fit) in `plasmacoll.atomic_hydrogen`, see
+formulas where it has no fit, and Vriens and Smeets' 1980 rate coefficients above n = 24) in
+`plasmacoll.atomic_hydrogen`, see
 [Negative-ion sources](/plasmacoll/guides/negative-ion-sources/#hydrogen-cross-sections),
 and the H₂ parameters of Rudd's model (below), checked in the tests against the review's own
 table.
@@ -92,7 +93,7 @@ relax with closed-form rates. For example, for isotropic elastic scattering
 $$\frac{d\langle E\rangle}{dt} = -\frac{2mM}{(m+M)^2}\,\nu\,\left(\langle E\rangle - \tfrac32 kT_g\right),$$
 
 and the number of collisions follows a Poisson process. The test suite and
-[tutorial 2](/plasmacoll/tutorials/02-relaxation/) use this to check the kinematics. Pass the reduced
+[the relaxation example](/plasmacoll/examples/02-relaxation/) use this to check the kinematics. Pass the reduced
 mass for `energy_frame="center_of_mass"` and the incident mass for `"lab"`, so that the table's
 energy-to-speed conversion matches the process.
 

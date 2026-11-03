@@ -13,11 +13,11 @@ electrons, plasma ions) and ``M_t`` its transition matrix: ``sigma_ij`` from
 state ``i`` to ``j`` adds to ``M[j, i]`` and subtracts from ``M[i, i]``. In
 terms of the line densities ``pi_t = int n_t dz`` the solution over a step
 where the targets' density ratios are constant is the matrix exponential of
-``sum_t delta pi_t M_t``, which :func:`charge_state_fractions` takes step by
+``sum_t delta pi_t M_t``, which `charge_state_fractions` takes step by
 step along the path.
 
-:func:`stripping_processes` turns the same cross sections into ``stripping``
-processes of :class:`~plasmacoll.mcc.MonteCarloCollisions`, one species per
+`stripping_processes` turns the same cross sections into ``stripping``
+processes of `plasmacoll.mcc.MonteCarloCollisions`, one species per
 state, so that markers that change state one event at a time follow the
 fractions on average.
 
@@ -33,10 +33,12 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import scope_profiler as sp
+from methodcard import Rule, method
 
 from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll.cross_sections import CrossSection
 from plasmacoll.process import CollisionProcess
+from plasmacoll.units import to_array, to_unit
 
 __all__ = ["ChargeStateTransitions", "charge_state_fractions", "stripping_processes"]
 
@@ -66,9 +68,21 @@ def _expm(matrix: np.ndarray) -> np.ndarray:
     return result
 
 
+@method(
+    equations={
+        "matrix": r"(\mathsf M_t)_{ji} \mathrel{+}= \sigma^t_{i \to j}, \qquad (\mathsf M_t)_{ii} \mathrel{-}= \sigma^t_{i \to j}, \qquad \frac{d\mathbf F}{d\pi_t} = \mathsf M_t \mathbf F",
+        "conservation": r"\sum_j (\mathsf M_t)_{ji} = 0 \ \Rightarrow\ \sum_i F_i = \text{const}",
+    },
+    assumptions=(
+        r"constant cross sections at one beam energy, in m$^2$, per target $t$; the states `-`, `0`, `+` by default",
+    ),
+)
 @dataclass(frozen=True)
 class ChargeStateTransitions:
     """The charge-changing cross sections of a beam, per target.
+
+    The cross sections take astropy Quantities, strings such as ``"1e-16
+    cm2"`` or plain numbers in m^2.
 
     Attributes:
         cross_sections: ``{target: {(from_state, to_state): sigma}}`` in m^2.
@@ -79,7 +93,15 @@ class ChargeStateTransitions:
     states: Sequence[str] = field(default=HYDROGEN_STATES)
 
     def __post_init__(self) -> None:
-        """Validate the states and the cross sections."""
+        """Convert and validate the states and the cross sections."""
+        object.__setattr__(
+            self,
+            "cross_sections",
+            {
+                target: to_unit(dict(table), "m^2", f"cross_sections[{target!r}]")
+                for target, table in self.cross_sections.items()
+            },
+        )
         states = tuple(self.states)
         if len(set(states)) != len(states) or len(states) < 2:
             raise ValueError("states must be at least two distinct names")
@@ -93,11 +115,6 @@ class ChargeStateTransitions:
                 if sigma < 0.0:
                     raise ValueError(f"target {target!r}: cross sections must be >= 0")
         object.__setattr__(self, "states", states)
-        object.__setattr__(
-            self,
-            "cross_sections",
-            {t: dict(table) for t, table in self.cross_sections.items()},
-        )
 
     @property
     def targets(self) -> tuple[str, ...]:
@@ -113,6 +130,14 @@ class ChargeStateTransitions:
             matrix[index[start], index[start]] -= sigma
         return matrix
 
+    @method(
+        equations={
+            "equilibrium": r"\Big(\sum_t w_t \mathsf M_t\Big)\mathbf F_\infty = \lambda_\mathrm{min}\mathbf F_\infty, \qquad |\lambda_\mathrm{min}| \text{ smallest}, \qquad \sum_i F_{\infty,i} = 1",
+        },
+        assumptions=(
+            r"a thick target: $w_t$ the targets' shares of the line density (equal by default); the eigenvalue is zero up to round-off",
+        ),
+    )
     def equilibrium(self, weights: Mapping[str, float] | None = None) -> np.ndarray:
         """Return the fractions after a thick target (the null vector of ``M``).
 
@@ -126,6 +151,54 @@ class ChargeStateTransitions:
         return vector / vector.sum()
 
 
+def _fractions_rules() -> dict:
+    """The SymPy rules of `charge_state_fractions` (for the tests).
+
+    Single stripping ``s1``, double stripping ``s2`` and the stripping of the
+    neutrals ``s3`` on one target, no capture, a pure negative-ion beam at the start.
+    """
+    import sympy
+
+    s1, s2, s3, pi = sympy.symbols("s1 s2 s3 line_density", positive=True)
+
+    def fraction(state: int):
+        def call(s1, s2, line_density, s3=3.0e-21):
+            table = {("-", "0"): s1, ("-", "+"): s2, ("0", "+"): s3}
+            transitions = ChargeStateTransitions({"gas": table})
+            path = {"gas": [0.0, line_density]}
+            return charge_state_fractions(transitions, path)[-1, state]
+
+        return call
+
+    ranges = {
+        "s1": (1.0e-20, 2.0e-20),
+        "s2": (1.0e-22, 1.0e-21),
+        "s3": (2.0e-21, 5.0e-21),
+        "line_density": (1.0e19, 1.0e21),
+    }
+    neutral = s1 / (s1 + s2 - s3) * (sympy.exp(-s3 * pi) - sympy.exp(-(s1 + s2) * pi))
+    return {
+        "negative": Rule(sympy.exp(-(s1 + s2) * pi), fraction(0), ranges),
+        "neutral": Rule(neutral, fraction(1), ranges),
+    }
+
+
+@method(
+    equations={
+        "rate_equations": r"\frac{d\mathbf F}{dz} = \sum_t n_t(z)\,\mathsf M_t\,\mathbf F, \qquad \pi_t = \int n_t\,dz",
+        "step": r"\mathbf F_k = \exp\Big(\sum_t \Delta\pi_{t,k}\,\mathsf M_t\Big)\,\mathbf F_{k-1}",
+        "expm": r"e^{\mathsf A} = \Big(\sum_{j=0}^{18} \frac{(2^{-s}\mathsf A)^j}{j!}\Big)^{2^s}, \qquad s = \Big\lceil \log_2 \frac{\|\mathsf A\|_1}{0.5} \Big\rceil",
+        "negative": r"F_- = e^{-(s_1 + s_2)\pi}",
+        "neutral": r"F_0 = \frac{s_1}{s_1 + s_2 - s_3}\Big(e^{-s_3\pi} - e^{-(s_1 + s_2)\pi}\Big)",
+    },
+    assumptions=(
+        r"exact where the targets' density ratios are constant over a step; the line densities non-decreasing and at the same points for every target",
+        r"the matrix exponential accurate to round-off, also for defective matrices (equal cross sections)",
+        r"the closed forms: one target, single and double stripping $s_1$, $s_2$, stripping of the neutrals $s_3$, no capture, $F_-(0) = 1$",
+    ),
+    components=("plasmacoll.charge_states.ChargeStateTransitions",),
+    symbolic=lambda: _fractions_rules(),
+)
 @sp.profile("plasmacoll.charge_state_fractions", tags=PROFILE_TAGS)
 def charge_state_fractions(
     transitions: ChargeStateTransitions,
@@ -138,7 +211,8 @@ def charge_state_fractions(
         transitions: The cross sections.
         line_density: ``{target: pi_t}``, the line density in m^-2 of each
             target accumulated from the start of the path, at the same points
-            for every target (non-decreasing, starting at the first point).
+            for every target (non-decreasing, starting at the first point);
+            arrays or astropy Quantities.
             Targets missing from ``transitions`` are refused; targets of
             ``transitions`` missing here contribute nothing.
         initial: The fractions at the start, by state name or in the order of
@@ -153,7 +227,10 @@ def charge_state_fractions(
     unknown = set(line_density) - set(transitions.targets)
     if unknown:
         raise ValueError(f"no cross sections for the target(s) {sorted(unknown)}")
-    columns = {t: np.asarray(v, dtype=float) for t, v in line_density.items()}
+    columns = {
+        t: np.asarray(to_array(v, "m^-2", f"line_density[{t!r}]"), dtype=float)
+        for t, v in line_density.items()
+    }
     lengths = {c.shape for c in columns.values()}
     if len(lengths) != 1 or len(next(iter(lengths))) != 1:
         raise ValueError("every target needs a 1D line density at the same points")
@@ -181,6 +258,17 @@ def charge_state_fractions(
     return fractions
 
 
+@method(
+    equations={
+        "frequency": r"\nu = n\,\sigma\,g \approx n\,\sigma\,v \quad (v \gg v_\mathrm{target})",
+        "charge_change": r"q = Z_\mathrm{to} - Z_\mathrm{from}",
+    },
+    assumptions=(
+        r"one `stripping` process per transition and target, constant cross section, looked up in the lab frame",
+        r"electrons released for $q > 0$, a target ion left behind for $q < 0$ (capture), each if a species is given",
+    ),
+    components=("plasmacoll.process.CollisionProcess",),
+)
 def stripping_processes(
     transitions: ChargeStateTransitions,
     species: Mapping[str, str],

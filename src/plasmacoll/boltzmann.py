@@ -1,10 +1,10 @@
 """A two-term Boltzmann solver for electrons in a gas mixture in a uniform DC field.
 
-:func:`solve_eedf` computes the steady electron energy distribution in a
-reduced field ``E/N`` from the same :class:`~plasmacoll.process.CollisionProcess`
+`solve_eedf` computes the steady electron energy distribution in a
+reduced field ``E/N`` from the same `plasmacoll.process.CollisionProcess`
 objects the Monte Carlo collisions use, and from it the mean energy, the
 reduced mobility ``mu N`` and diffusion coefficient ``D N`` and the rate
-coefficient of every process. :func:`swarm_table` repeats this over a range of
+coefficient of every process. `swarm_table` repeats this over a range of
 fields and tabulates the results against the mean energy, the form fluid and
 global models look them up in. Every model then gets transport and rates
 consistent with the cross sections of the particle simulation.
@@ -24,7 +24,12 @@ over the elastic (momentum-transfer) cross sections, ``sigma_m`` the sum of
 all cross sections weighted by the mole fractions ``x_k``, and ``S`` the
 inelastic collision terms: excitation moves electrons down by the energy
 loss, ionization replaces one electron by two that share the residual energy,
-and attachment removes electrons. The change of the electron number is
+and attachment removes electrons. An excitation with an ``upper_state`` also
+has its superelastic inverse, which moves the electrons colliding with the
+excited molecules up by the energy loss, with the cross section of detailed
+balance ``sigma_sup(eps) = (g_l / g_u) (1 + u / eps) sigma(eps + u)``. With the
+levels populated at the gas temperature this is how the gas temperature enters
+the inelastic collisions. The change of the electron number is
 described either by an exponential growth in time (``growth="temporal"``,
 which adds ``nu / (N gamma eps^1/2)`` to ``sigma_m`` and a sink to ``S``) or
 in space along the field (``growth="spatial"``, the steady-state Townsend
@@ -35,22 +40,27 @@ that every electron removed by a collision reappears in another cell: the
 discretisation conserves the particles exactly.
 
 The solver runs on the host with NumPy, like the rate tables of
-:mod:`plasmacoll.rates`; the cross sections may live on either backend.
-Superelastic collisions and the gas temperature of the inelastic processes are
-not included, and the electron energy of every table is taken in the gas
-frame (the difference to the centre-of-mass frame is of order ``m_e / M``).
+`plasmacoll.rates`; the cross sections may live on either backend.
+Gases may have levels (``states``): the population of a level makes its
+mole fraction, so that processes from and to the vibrational or rotational
+levels of a molecule act on their own share of the gas, while elastic
+collisions, electronic excitation and ionization act on the whole gas.
+Electron-electron collisions are not included, and the electron energy of
+every table is taken in the gas frame (the difference to the centre-of-mass
+frame is of order ``m_e / M``).
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 import cunumpy as xp
 import numpy as np
 import scope_profiler as sp
+from methodcard import ConvergenceProblem, method
 
 from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll._types import Array
@@ -58,6 +68,10 @@ from plasmacoll.background import NeutralBackground
 from plasmacoll.constants import ELECTRON_MASS, ELEMENTARY_CHARGE, TOWNSEND
 from plasmacoll.process import CollisionProcess
 from plasmacoll.rates import RateTable
+from plasmacoll.units import to_array, to_unit
+
+#: The Townsend (1e-21 V m^2) as an astropy unit string; astropy has no ``Td``.
+_TD = "1e-21 V m2"
 
 __all__ = [
     "GROWTH_MODELS",
@@ -87,6 +101,24 @@ _TARGET_DECADES = 15.0
 _TINY = 1.0e-300
 
 
+@method(
+    equations={
+        "mobility": r"\mu N = -\frac{\gamma}{3}\int \frac{\varepsilon}{\tilde\sigma_m}\,\frac{dF_0}{d\varepsilon}\,d\varepsilon, \qquad DN = \frac{\gamma}{3}\int \frac{\varepsilon}{\tilde\sigma_m}\,F_0\,d\varepsilon",
+        "mean_energy": r"\langle\varepsilon\rangle = \int \varepsilon^{3/2} F_0\,d\varepsilon, \qquad k_j = \gamma\int \varepsilon\,\sigma_j F_0\,d\varepsilon",
+        "townsend": r"\Big(\frac{\alpha}{N}\Big)^2 DN - \frac{\alpha}{N}\,\mu N\,\frac{E}{N} + \frac{\bar\nu}{N} = 0 \quad \text{(the smaller root)}, \qquad \frac{\bar\nu}{N} = \sum_\mathrm{iz} x_j k_j - \sum_\mathrm{att} x_j k_j",
+        "derived": r"w = \mu N\,\frac{E}{N}, \qquad \epsilon_k = \frac{DN}{\mu N}, \qquad f(\varepsilon) = \varepsilon^{1/2} F_0",
+        "power": r"\Big(\frac{E}{N}\Big)^2 \mu N + \sum_\mathrm{sup} x_{u,j}\,\Delta E_j\,k^\mathrm{sup}_j = \gamma\int \varepsilon^2\sigma_\varepsilon\Big(F_0 + kT\frac{dF_0}{d\varepsilon}\Big)d\varepsilon + \sum_j x_j\,\Delta E_j\,k_j + P_\mathrm{growth}",
+        "discrete": r"\mu N = -\frac{\gamma}{3}\sum_{k} \frac{\varepsilon_{k+1/2}}{\tilde\sigma_m}(F_{k+1} - F_k), \quad DN = \frac{\gamma}{3}\sum_k \frac{\varepsilon_k}{\tilde\sigma_m(\varepsilon_k)} F_k h, \quad \langle\varepsilon\rangle = \sum_k F_k\,\tfrac25\Delta\big(\varepsilon^{5/2}\big)_k",
+    },
+    assumptions=(
+        r"$k_j$ per molecule of the process's own gas, also for elastic processes; the discriminant of $\alpha/N$ clipped at zero",
+        r"the power gained in spatial growth is $\frac{E}{N}\big(\frac{E}{N}\mu N - \frac{\alpha}{N} DN\big)$; $P_\mathrm{growth}$ is the energy the attached electrons take plus $\frac{\bar\nu}{N}\langle\varepsilon\rangle$ (temporal) or minus the spatial source's energy moment",
+        r"`power_balance` is (gained - lost) / gained, a measure of the discretisation error; NaN without a field and superelastic collisions",
+    ),
+    references=(
+        "[Hagelaar and Pitchford, Plasma Sources Sci. Technol. 14, 722 (2005)](https://doi.org/10.1088/0963-0252/14/4/011)",
+    ),
+)
 @dataclass(frozen=True)
 class BoltzmannSolution:
     """The steady electron energy distribution in a field and what follows from it.
@@ -94,7 +126,7 @@ class BoltzmannSolution:
     Attributes:
         reduced_field: ``E/N`` in Td.
         gas_temperature: ``kT`` of the gas in eV.
-        growth: The growth model, one of :data:`GROWTH_MODELS`.
+        growth: The growth model, one of `GROWTH_MODELS`.
         energy: The cell centres in eV.
         energy_edges: The cell boundaries in eV, one more than ``energy``.
         eepf: The electron energy probability function ``F0`` in eV^-3/2 at
@@ -103,16 +135,19 @@ class BoltzmannSolution:
         mobility: The reduced mobility ``mu N`` in 1/(V m s).
         diffusion: The reduced (transverse) diffusion coefficient ``D N`` in 1/(m s).
         rate_coefficients: ``k = gamma int eps sigma F0 deps`` in m^3/s per
-            process name, per molecule of the process's own gas.
+            process name, per molecule of the process's own gas or state; the
+            superelastic inverse of process ``name`` is ``"name (superelastic)"``,
+            per molecule of its upper state.
         net_ionization: ``sum x k_ionization - sum x k_attachment`` in m^3/s, the
             electron growth frequency divided by ``N``.
         townsend_coefficient: The reduced Townsend coefficient ``alpha / N`` in
             m^2 (negative if attachment wins), from ``mu N``, ``D N`` and
             ``net_ionization`` by ``(alpha/N)^2 DN - (alpha/N) muN E/N + k = 0``.
         power: The power per electron divided by ``N`` in eV m^3/s gained from the
-            field (``"field"``) and lost in elastic collisions (``"elastic"``),
-            in excitation and ionization (``"inelastic"``) and to the change of
-            the electron number (``"growth"``).
+            field (``"field"``) and in superelastic collisions
+            (``"superelastic"``), and lost in elastic collisions
+            (``"elastic"``), in excitation and ionization (``"inelastic"``) and to
+            the change of the electron number (``"growth"``).
         iterations: The number of linear solves of the last grid.
     """
 
@@ -152,14 +187,26 @@ class BoltzmannSolution:
 
         It vanishes for an exact solution, so it measures the discretisation
         error in the energy, as the power balance of BOLSIG+ does. Without a
-        field it is undefined (NaN).
+        field and superelastic collisions it is undefined (NaN).
         """
-        if self.power["field"] == 0.0:
+        gained = self.power["field"] + self.power["superelastic"]
+        if gained == 0.0:
             return math.nan
         lost = self.power["elastic"] + self.power["inelastic"] + self.power["growth"]
-        return (self.power["field"] - lost) / self.power["field"]
+        return (gained - lost) / gained
 
 
+@method(
+    equations={
+        "interpolation": r"\ln q(\langle\varepsilon\rangle) \text{ linear in } \ln\langle\varepsilon\rangle; \quad q \text{ itself linear in } \ln\langle\varepsilon\rangle \text{ for a column with negative values}",
+        "temperature": r"T_e = \tfrac23\,\langle\varepsilon\rangle",
+    },
+    assumptions=(
+        r"clamped to the table; a zero stays zero; refuses a mean energy that does not increase with the field",
+        r"$T_e$ the temperature of `rate_table`, the effective electron temperature of fluid and global models",
+    ),
+    components=("plasmacoll.boltzmann.solve_eedf",),
+)
 @dataclass(frozen=True)
 class SwarmTable:
     """Solutions over a range of reduced fields, tabulated against the mean energy.
@@ -198,7 +245,7 @@ class SwarmTable:
     def interpolate(self, quantity: str, mean_energy: float | Array) -> np.ndarray:
         """Return ``quantity`` at ``mean_energy`` (eV), clamped to the table.
 
-        Interpolates in log-log, as :class:`~plasmacoll.rates.RateTable` does
+        Interpolates in log-log, as `plasmacoll.rates.RateTable` does
         (a zero stays zero), and linearly in the logarithm of the mean energy
         for a column with negative values such as an attachment-dominated
         Townsend coefficient.
@@ -234,7 +281,7 @@ class SwarmTable:
         return np.where(value <= tiny * 10, 0.0, value)
 
     def rate_table(self, name: str) -> RateTable:
-        """Return the rate coefficient of process ``name`` as a :class:`RateTable`.
+        """Return the rate coefficient of process ``name`` as a `RateTable`.
 
         The table's temperature is ``2/3`` of the mean energy, the effective
         electron temperature of fluid and global models.
@@ -257,8 +304,9 @@ class _Channel:
     """
 
     process: CollisionProcess
+    name: str
     fraction: float
-    loss: float
+    loss: float  # eV, negative for a superelastic collision
     source: np.ndarray  # cell of the incident electron at each node
     offset: np.ndarray  # node energy minus the centre of its cell, eV
     weight: np.ndarray  # gamma eps sigma times the quadrature weight
@@ -295,6 +343,13 @@ def _sigma(process: CollisionProcess, energy: np.ndarray) -> np.ndarray:
     return np.asarray(
         xp.to_numpy(process.cross_section(xp.asarray(energy))), dtype=float
     )
+
+
+def _sigma_superelastic(process: CollisionProcess, energy: np.ndarray) -> np.ndarray:
+    """Return the superelastic cross section of ``process`` in m^2 at ``energy`` > 0."""
+    gain = process.loss
+    forward = _sigma(process, energy + gain)
+    return (1.0 + gain / energy) * forward / process.statistical_weight_ratio
 
 
 def _sharing_kernel(
@@ -349,6 +404,7 @@ def _channel(process: CollisionProcess, fraction: float, edges: np.ndarray) -> _
     centres = 0.5 * (edges[1:] + edges[:-1])
     channel = _Channel(
         process=process,
+        name=process.name,
         fraction=fraction,
         loss=loss,
         source=source,
@@ -368,6 +424,47 @@ def _channel(process: CollisionProcess, fraction: float, edges: np.ndarray) -> _
     return channel
 
 
+def _superelastic_channel(
+    process: CollisionProcess, fraction: float, edges: np.ndarray
+) -> _Channel:
+    """Return the integrals of the superelastic inverse of an excitation on the grid.
+
+    Electrons gain the energy loss ``u`` of the excitation; only those whose
+    products stay on the grid (``eps + u`` below its end) collide.
+    """
+    gain = process.loss
+    table = np.asarray(xp.to_numpy(process.cross_section.energy), dtype=float)
+    threshold = process.cross_section.threshold
+    breaks = np.concatenate([edges, table - gain, [threshold - gain], edges - gain])
+    low = max(threshold - gain, 0.0)
+    high = edges[-1] - gain
+    nodes, weights, middle = (
+        _quadrature(breaks, low, high)
+        if low < high
+        else (np.empty(0), np.empty(0), np.empty(0))
+    )
+    source = _cell_of(edges, middle)
+    centres = 0.5 * (edges[1:] + edges[:-1])
+    # eps sigma_sup(eps) = (g_l / g_u) (eps + u) sigma(eps + u), finite at eps = 0
+    forward = _sigma(process, nodes + gain)
+    return _Channel(
+        process=process,
+        name=f"{process.name} (superelastic)",
+        fraction=fraction,
+        loss=-gain,
+        source=source,
+        offset=nodes - centres[source],
+        weight=GAMMA
+        * (nodes + gain)
+        * forward
+        / process.statistical_weight_ratio
+        * weights,
+        energy=nodes,
+        target=_cell_of(edges, middle + gain),
+        multiplicity=1.0,
+    )
+
+
 @dataclass
 class _Problem:
     """Everything about a field, a gas and a grid that does not depend on ``F0``."""
@@ -381,7 +478,7 @@ class _Problem:
     sigma_eps: np.ndarray  # at the inner edges
     sigma_m: np.ndarray  # at the inner edges
     sigma_m_centre: np.ndarray
-    names: list[str]  # the process names in the order given
+    names: list[str]  # the process names in the order given, then the superelastic
 
     @property
     def centres(self) -> np.ndarray:
@@ -420,6 +517,7 @@ def _build(
     sigma_m_centre = np.zeros_like(centres)
     channels = []
     elastic = []
+    superelastic = []
     for process in processes:
         fraction = fractions[process.background]
         sigma_m += fraction * _sigma(process, inner)
@@ -430,6 +528,11 @@ def _build(
             elastic.append(_channel(process, fraction, edges))
         else:
             channels.append(_channel(process, fraction, edges))
+        if process.upper_state is not None:
+            upper = fractions[process.upper_state]
+            sigma_m += upper * _sigma_superelastic(process, inner)
+            sigma_m_centre += upper * _sigma_superelastic(process, centres)
+            superelastic.append(_superelastic_channel(process, upper, edges))
     if np.any(sigma_m <= 0.0) or np.any(sigma_m_centre <= 0.0):
         raise ValueError(
             "the total cross section must be positive at every energy of the grid; "
@@ -440,23 +543,30 @@ def _build(
         gas_temperature=gas_temperature,
         growth=growth,
         edges=edges,
-        channels=channels,
+        channels=channels + superelastic,
         elastic=elastic,
         sigma_eps=sigma_eps,
         sigma_m=sigma_m,
         sigma_m_centre=sigma_m_centre,
-        names=[process.name for process in processes],
+        names=[process.name for process in processes]
+        + [channel.name for channel in superelastic],
     )
 
 
 def _log_slope(eepf: np.ndarray, problem: _Problem) -> np.ndarray:
     """Return ``d ln F0 / deps`` per cell, the exponent of ``F0`` inside the cell."""
     log_f = np.log(np.maximum(eepf, _TINY))
-    centres = problem.centres
+    one_sided = np.diff(log_f) / np.diff(problem.centres)
+    left, right = one_sided[:-1], one_sided[1:]
     slope = np.empty_like(log_f)
-    slope[1:-1] = (log_f[2:] - log_f[:-2]) / (centres[2:] - centres[:-2])
-    slope[0] = (log_f[1] - log_f[0]) / (centres[1] - centres[0])
-    slope[-1] = (log_f[-1] - log_f[-2]) / (centres[-1] - centres[-2])
+    # van Leer's harmonic mean: the central slope where ln F0 is smooth, but the
+    # exponential stays between the neighbours where an iterate drops to zero
+    with np.errstate(invalid="ignore", divide="ignore"):
+        slope[1:-1] = np.where(
+            left * right > 0.0, 2.0 * left * right / (left + right), 0.0
+        )
+    slope[0] = one_sided[0]
+    slope[-1] = one_sided[-1]
     # keep exp(slope * offset) finite across a cell
     limit = 50.0 / problem.widths
     return np.clip(slope, -limit, limit)
@@ -497,7 +607,9 @@ def _moments(
     net = 0.0
     for channel in problem.channels + problem.elastic:
         rate = float(np.sum(channel.flow(slope) * eepf[channel.source]))
-        rates[channel.process.name] = rate
+        rates[channel.name] = rate
+        if channel.loss < 0.0:
+            continue
         if channel.process.kind in _IONIZATION:
             net += channel.fraction * rate
         elif channel.process.kind in _ATTACHMENT:
@@ -624,6 +736,9 @@ def _solve(
     """Iterate the linear problem until ``F0`` is self-consistent.
 
     Without a start, the first iterate has no inelastic shape and no growth.
+    With spatial growth, ``alpha/N`` of the next matrix is extrapolated from the
+    last two iterations (a secant step on ``alpha = g(alpha)``): with strong
+    ionization the plain update contracts by only a few per cent per iteration.
     """
     if eepf is None:
         cells = problem.centres.size
@@ -634,7 +749,9 @@ def _solve(
     slope = _log_slope(eepf, problem)
     moments = _moments(eepf, slope, problem, 0.0)
     previous_error = math.inf
+    previous: tuple[float, float] | None = None  # (alpha used, alpha found)
     for iteration in range(1, max_iterations + 1):
+        used = moments.townsend
         new = _step(problem, slope, moments)
         error = float(np.sum(np.abs(new - eepf) * problem.weights))
         if error > previous_error:
@@ -643,7 +760,14 @@ def _solve(
         previous_error = error
         eepf = new
         slope = _log_slope(eepf, problem)
-        moments = _moments(eepf, slope, problem, moments.townsend)
+        moments = _moments(eepf, slope, problem, used)
+        if problem.growth == "spatial":
+            found = moments.townsend
+            if previous is not None and used != previous[0]:
+                # the contraction of alpha -> g(alpha), at most 0.98 (50x the step)
+                rate = min((found - previous[1]) / (used - previous[0]), 0.98)
+                moments.townsend = used + (found - used) / (1.0 - rate)
+            previous = (used, found)
         if error < rtol:
             return eepf, moments, slope, iteration
     raise RuntimeError(
@@ -671,10 +795,13 @@ def _power(
         )
     )
     inelastic = 0.0
+    superelastic = 0.0
     removed = 0.0
     for channel in problem.channels:
-        rate = channel.fraction * moments.rates[channel.process.name]
-        if channel.process.kind in _ATTACHMENT:
+        rate = channel.fraction * moments.rates[channel.name]
+        if channel.loss < 0.0:
+            superelastic -= channel.loss * rate
+        elif channel.process.kind in _ATTACHMENT:
             flow = channel.flow(slope) * eepf[channel.source]
             removed += channel.fraction * float(np.sum(channel.energy * flow))
         else:
@@ -698,6 +825,7 @@ def _power(
         growth = removed - source
     return mean_energy, {
         "field": float(gained),
+        "superelastic": superelastic,
         "elastic": elastic,
         "inelastic": inelastic,
         "growth": float(growth),
@@ -707,13 +835,23 @@ def _power(
 def _mixture(
     processes: Sequence[CollisionProcess],
     mixture: Sequence[NeutralBackground],
+    states: Mapping[str, tuple[str, float]] | None = None,
 ) -> tuple[dict[str, float], dict[str, float]]:
-    """Return the mole fraction and the mass of every gas, and check the processes."""
+    """Return the mole fraction and the mass of every gas and state, and check them."""
     total = sum(background.density for background in mixture)
     if not mixture or total <= 0.0:
         raise ValueError("the mixture needs a gas with a positive density")
     fractions = {background.name: background.density / total for background in mixture}
     masses = {background.name: background.mass for background in mixture}
+    for state, (gas_name, population) in (states or {}).items():
+        if state in fractions:
+            raise ValueError(f"state {state!r} has the name of a gas or another state")
+        if gas_name not in masses:
+            raise ValueError(f"state {state!r}: no gas {gas_name!r} in the mixture")
+        if not 0.0 <= population <= 1.0:
+            raise ValueError(f"state {state!r}: the population must be in [0, 1]")
+        fractions[state] = fractions[gas_name] * population
+        masses[state] = masses[gas_name]
     names = [process.name for process in processes]
     if len(set(names)) != len(names):
         raise ValueError(f"process names must be unique, got {names}")
@@ -723,10 +861,11 @@ def _mixture(
                 f"{process.name}: the Boltzmann solver takes electron-impact "
                 f"processes of the kinds {_KINDS}, not {process.kind!r}"
             )
-        if process.background not in fractions:
-            raise ValueError(
-                f"{process.name}: no gas {process.background!r} in the mixture"
-            )
+        for gas_name in (process.background, process.upper_state):
+            if gas_name is not None and gas_name not in fractions:
+                raise ValueError(
+                    f"{process.name}: no gas or state {gas_name!r} in the mixture"
+                )
         if process.kind in _ELASTIC and process.scattering != "isotropic":
             raise ValueError(
                 f"{process.name}: the two-term expansion needs the momentum-transfer "
@@ -735,6 +874,68 @@ def _mixture(
     return fractions, masses
 
 
+def _reid_problem() -> ConvergenceProblem:
+    """Reid's ramp model gas on a fixed grid, against a 1600-cell solution.
+
+    Reid, Aust. J. Phys. 32, 231 (1979): a constant elastic cross section of 6 A^2
+    and an excitation of 10 (eps - 0.2) A^2/eV, M = 4 u, T = 0, at 12 Td.
+    """
+    from plasmacoll.constants import ATOMIC_MASS
+    from plasmacoll.cross_sections import CrossSection
+
+    ramp = CrossSection(energy=[0.2, 1000.2], sigma=[0.0, 1.0e-16], threshold=0.2)
+    processes = [
+        CollisionProcess("elastic", "gas", CrossSection.constant(6.0e-20)),
+        CollisionProcess("excitation", "gas", ramp),
+    ]
+    gas = [NeutralBackground("gas", 1.0e22, 0.0, 4.0 * ATOMIC_MASS)]
+    top = 3.0
+
+    def mean_energy(cells: int) -> float:
+        solution = solve_eedf(processes, gas, 12.0, num_cells=cells, max_energy=top)
+        return solution.mean_energy
+
+    reference = mean_energy(1600)
+
+    def error(step: float) -> float:
+        return abs(mean_energy(round(top / step)) - reference) / reference
+
+    return ConvergenceProblem(error, steps=[top / 40, top / 80, top / 160])
+
+
+@method(
+    equations={
+        "boltzmann": r"\frac{d}{d\varepsilon}\Big(W F_0 - D\,\frac{dF_0}{d\varepsilon}\Big) = S, \qquad \int \varepsilon^{1/2} F_0\,d\varepsilon = 1",
+        "coefficients": r"W = -\gamma\,\varepsilon^2 \sigma_\varepsilon, \qquad D = \frac{\gamma}{3}\Big(\frac{E}{N}\Big)^2 \frac{\varepsilon}{\tilde\sigma_m} + \gamma\,kT\,\varepsilon^2 \sigma_\varepsilon, \qquad \gamma = \sqrt{\frac{2e}{m_e}}",
+        "superelastic": r"\sigma^\mathrm{sup}_j(\varepsilon) = \frac{g_l}{g_u}\Big(1 + \frac{\Delta E_j}{\varepsilon}\Big)\,\sigma_j(\varepsilon + \Delta E_j) \ \text{on the upper state, fraction } x_{u,j} = x_\mathrm{gas}\,p_u",
+        "cross_sections": r"\sigma_\varepsilon = \sum_\mathrm{elastic} x_j\,\frac{2m_e}{M_j}\,\sigma_j, \qquad \sigma_m = \sum_\mathrm{all} x_j \sigma_j + \sum_\mathrm{sup} x_{u,j}\sigma^\mathrm{sup}_j, \qquad \tilde\sigma_m = \begin{cases} \max\Big(\sigma_m + \dfrac{\bar\nu}{N\gamma\varepsilon^{1/2}},\ 0.01\,\sigma_m\Big) & \text{temporal growth} \\ \sigma_m & \text{spatial growth} \end{cases}",
+        "growth": r"S \mathrel{+}= -\frac{\bar\nu}{N}\varepsilon^{1/2} F_0 \ \text{(temporal)}; \qquad W \mathrel{+}= -\frac{\gamma}{3}\frac{E}{N}\frac{\alpha}{N}\frac{\varepsilon}{\sigma_m}, \quad S \mathrel{+}= \frac{\gamma}{3}\frac{\alpha}{N}\Big(\frac{E}{N}\frac{\varepsilon}{\sigma_m}\frac{dF_0}{d\varepsilon} + \frac{\alpha}{N}\frac{\varepsilon}{\sigma_m}F_0\Big) \ \text{(spatial)}",
+        "flux": r"J_{k+1/2} = \frac{D}{h}\big[B(-z)\,F_k - B(z)\,F_{k+1}\big], \qquad z = \frac{Wh}{D}, \qquad B(z) = \frac{z}{e^z - 1}",
+        "collisions": r"F_0(\varepsilon) = F_k\,e^{s_k(\varepsilon - \varepsilon_k)} \text{ in cell } k, \qquad q_n = \gamma\,\varepsilon_n \sigma(\varepsilon_n)\,\omega_n\,e^{s_k(\varepsilon_n - \varepsilon_k)}, \qquad A_{kk} \mathrel{+}= x_j\sum_{n \in k} q_n",
+        "kernel": r"K_{cn}^\mathrm{uniform} = \frac{2\,\big|[\varepsilon_{c-1/2}, \varepsilon_{c+1/2}] \cap [0, r]\big|}{r}, \qquad K_{cn}^\mathrm{Opal} = G(\varepsilon_{c+1/2}) - G(\varepsilon_{c-1/2}) + G(r - \varepsilon_{c-1/2}) - G(r - \varepsilon_{c+1/2}), \qquad G(E) = \frac{\arctan(\min(E, r/2)/w)}{\arctan(r/2w)}, \quad r = \varepsilon_n - \Delta E",
+        "normalisation": r"\sum_k w_k F_k = 1, \qquad w_k = \tfrac23\big(\varepsilon_{k+1/2}^{3/2} - \varepsilon_{k-1/2}^{3/2}\big)",
+    },
+    order=2,
+    assumptions=(
+        r"two-term expansion in a uniform DC field; $x_j$ the mole fractions from the mixture's densities; $kT$ the density-weighted gas temperature unless given",
+        r"a state's fraction is its population $p$ times the fraction of its gas, its mass that of the gas",
+        r"excitation and dissociation move electrons down by $\Delta E$ (into the cell of $\varepsilon - \Delta E$), superelastic collisions up (into the cell of $\varepsilon + \Delta E$, only from $\varepsilon + \Delta E$ below the grid end, with $\varepsilon\sigma^\mathrm{sup}$ evaluated from $\sigma_j$ so that it stays finite at $\varepsilon = 0$); ionization replaces one electron by two sharing $\varepsilon - \Delta E$ (equal: the cell of $(\varepsilon - \Delta E)/2$, twice; uniform and Opal: the kernel $K$, whose columns sum to 2); attachment removes them: the columns of the operator sum to zero, so particles are conserved exactly",
+        r"uniform grid of $N$ = `num_cells` (200) cells, $F_k$ at the centres; $B(z) = 1 - z/2$ for $|z| < 10^{-10}$, $D$ floored at $10^{-300}$; no flux through $\varepsilon = 0$ and the grid end",
+        r"collision integrals by 3-point Gauss-Legendre on the sub-intervals between the edges, table energies, threshold and the edges shifted by $\Delta E$ (by $-\Delta E$ for superelastic, $2\varepsilon + \Delta E$ for equal sharing); $s_k$ the harmonic mean (van Leer) of the one-sided differences of $\ln\max(F, 10^{-300})$, zero at an extremum, clipped to $\pm 50/h$",
+        r"spatial growth: the gradient term split half and half to the cells next to each edge, the $(\alpha/N)^2$ term diagonal",
+        r"the first row replaced by the normalisation; a dense solve per iteration, negative values clipped; iterated (damped when the error grows) until $\sum_k |\Delta F_k| w_k <$ `rtol` ($10^{-8}$)",
+        r"without `max_energy` the grid end is adjusted (from 10 eV, at most 40 times, with temporal growth) until $F_0$ falls by 10 to 20 decades across the grid; spatial growth is then solved on that grid from the temporal solution",
+        r"the gas temperature enters the inelastic terms only through the superelastic collisions of the populated levels; not included: electron-electron collisions, the continuous approximation for rotations (CAR), the $O(m_e/M)$ frame correction of table energies; elastic processes with the momentum-transfer cross section (isotropic) only",
+        r"the order is that of the mean energy on a fixed grid (Reid's ramp model)",
+    ),
+    references=(
+        "[Hagelaar and Pitchford, Plasma Sources Sci. Technol. 14, 722 (2005)](https://doi.org/10.1088/0963-0252/14/4/011)",
+        "[Scharfetter and Gummel, IEEE Trans. Electron Devices 16, 64 (1969)](https://doi.org/10.1109/T-ED.1969.16566)",
+        "Reid, Aust. J. Phys. 32, 231 (1979)",
+    ),
+    components=("plasmacoll.boltzmann.BoltzmannSolution",),
+    problem=_reid_problem,
+)
 @sp.profile("plasmacoll.solve_eedf", tags=PROFILE_TAGS)
 def solve_eedf(
     processes: Sequence[CollisionProcess],
@@ -742,6 +943,7 @@ def solve_eedf(
     reduced_field: float,
     gas_temperature: float | None = None,
     *,
+    states: Mapping[str, tuple[str, float]] | None = None,
     growth: str = "temporal",
     num_cells: int = 200,
     max_energy: float | None = None,
@@ -750,18 +952,29 @@ def solve_eedf(
 ) -> BoltzmannSolution:
     """Return the steady electron energy distribution in a uniform DC field.
 
+    ``reduced_field``, ``gas_temperature`` and ``max_energy`` take astropy
+    Quantities (``1e-20 * u.V * u.m**2``, ``300 * u.K``), strings or plain
+    numbers in the units below; astropy has no Townsend, so a reduced field
+    in Td is a plain number.
+
     Args:
         processes: The electron-impact processes: ``elastic`` (with the
             momentum-transfer cross section), ``excitation``, ``dissociation``,
             ``ionization``, ``dissociative_ionization``, ``attachment`` and
             ``dissociative_attachment``. Ionization shares the residual energy
-            as its ``energy_sharing`` says.
+            as its ``energy_sharing`` says; an excitation with an
+            ``upper_state`` also has its superelastic inverse.
         mixture: The gases the processes refer to; the mole fractions are
             their densities divided by the total, and their masses set the
             elastic energy loss.
         reduced_field: ``E/N`` in Td (1 Td = 1e-21 V m^2).
         gas_temperature: ``kT`` of the gas in eV; the density-weighted mean of
             the mixture's temperatures if None.
+        states: Levels of the gases, e.g. vibrational or rotational, as
+            ``{name: (gas, population)}``: the fraction of the gas's molecules
+            in that level. Processes may name a state as their background or
+            ``upper_state``; a process on the gas itself acts on all its
+            molecules.
         growth: ``"temporal"`` for an electron number growing exponentially in
             time, ``"spatial"`` for one growing along the field (steady-state
             Townsend); they agree unless ionization or attachment is strong.
@@ -777,9 +990,12 @@ def solve_eedf(
             from the mixture, or a zero field in a gas at zero temperature.
         RuntimeError: If the iteration does not converge.
     """
+    reduced_field = to_unit(reduced_field, _TD, "reduced_field")
+    gas_temperature = to_unit(gas_temperature, "eV", "gas_temperature")
+    max_energy = to_unit(max_energy, "eV", "max_energy")
     if growth not in GROWTH_MODELS:
         raise ValueError(f"growth must be one of {GROWTH_MODELS}")
-    fractions, masses = _mixture(processes, mixture)
+    fractions, masses = _mixture(processes, mixture, states)
     if gas_temperature is None:
         total = sum(background.density for background in mixture)
         gas_temperature = (
@@ -798,18 +1014,20 @@ def solve_eedf(
     field_ = reduced_field * TOWNSEND
     temperature = float(gas_temperature)
 
-    def build(energy: float) -> _Problem:
+    def build(energy: float, model: str = "temporal") -> _Problem:
         return _build(
             processes,
             fractions,
             masses,
             field_,
             temperature,
-            growth,
+            model,
             energy,
             num_cells,
         )
 
+    # the grid is searched with temporal growth: on a grid too short to reach the
+    # ionization the spatial problem (attachment only) need not have a solution
     energy = 10.0 if max_energy is None else max_energy
     problem = build(energy)
     eepf, moments, slope, iterations = _solve(problem, None, rtol, max_iterations)
@@ -831,7 +1049,8 @@ def solve_eedf(
             energy = 0.5 * (too_short + too_long)
         else:
             # F0 falls like exp(-eps / T) or faster: change the range by at most 2x
-            energy *= min(max(math.sqrt(_TARGET_DECADES / decades), 0.5), 2.0)
+            decades = max(decades, 0.25 * _TARGET_DECADES)
+            energy *= max(math.sqrt(_TARGET_DECADES / decades), 0.5)
         previous, problem = problem, build(energy)
         # start from the previous solution, stretched onto the new grid
         start = np.exp(
@@ -840,6 +1059,9 @@ def solve_eedf(
             )
         )
         eepf, moments, slope, iterations = _solve(problem, start, rtol, max_iterations)
+    if growth == "spatial":
+        problem = build(problem.edges[-1], growth)
+        eepf, moments, slope, iterations = _solve(problem, eepf, rtol, max_iterations)
     mean_energy, power = _power(problem, eepf, slope, moments)
     return BoltzmannSolution(
         reduced_field=float(reduced_field),
@@ -872,12 +1094,14 @@ def swarm_table(
     """Solve at each reduced field (Td) and tabulate the results.
 
     Args:
-        processes: The electron-impact processes, as for :func:`solve_eedf`.
-        mixture: The gases, as for :func:`solve_eedf`.
-        reduced_fields: ``E/N`` in Td, increasing.
-        gas_temperature: ``kT`` of the gas in eV, as for :func:`solve_eedf`.
-        **options: Further keyword arguments of :func:`solve_eedf`.
+        processes: The electron-impact processes, as for `solve_eedf`.
+        mixture: The gases, as for `solve_eedf`.
+        reduced_fields: ``E/N`` in Td, increasing; a Quantity in V m^2 too.
+        gas_temperature: ``kT`` of the gas in eV, as for `solve_eedf`.
+        **options: Further keyword arguments of `solve_eedf`.
     """
+    reduced_fields = to_array(reduced_fields, _TD, "reduced_fields")
+    gas_temperature = to_unit(gas_temperature, "eV", "gas_temperature")
     fields = np.asarray(xp.to_numpy(xp.asarray(reduced_fields, dtype=float)))
     if fields.ndim != 1 or fields.size < 2 or np.any(np.diff(fields) <= 0.0):
         raise ValueError("reduced_fields must be increasing, at least two")

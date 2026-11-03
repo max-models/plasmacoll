@@ -56,7 +56,7 @@ atoms (Kimura and Kasugai 2010, as given by Krištof et al. 2019).
 
 The level-resolved attachment cross sections of Janev, Reiter and Samm are in
 `plasmacoll.janev` (next section); other data are read with `CrossSection.from_table`.
-[Tutorial 5](/plasmacoll/tutorials/05-hydrogen-negative-ions/) runs the pipeline with synthetic
+[The negative-ion example](/plasmacoll/examples/05-hydrogen-negative-ions/) runs the pipeline with synthetic
 levels.
 
 ## Hydrogen cross sections

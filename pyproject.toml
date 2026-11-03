@@ -5,11 +5,10 @@ requires = [ "setuptools", "wheel" ]
 
 [project]
 name = "plasmacoll"
-version = "0.4.0"
+version = "0.5.0"
 description = "Null-collision Monte Carlo collisions of charged particles with neutral gases, on NumPy or CuPy arrays."
 readme = "README.md"
 keywords = [ "cross sections", "cupy", "lxcat", "monte carlo collisions", "negative ions", "null collision", "particle-in-cell", "plasma" ]
-license = { file = "LICENSE.txt" }
 authors = [ { name = "Max" } ]
 requires-python = ">=3.10"
 classifiers = [
@@ -23,6 +22,7 @@ classifiers = [
 ]
 dependencies = [
   "cunumpy>=0.5",
+  "methodcard",
   "numpy",
   "scope-profiler>=0.7.5",
 ]
@@ -37,14 +37,19 @@ optional-dependencies.dev = [
   "plasmacoll[test,docs]",
 ]
 optional-dependencies.docs = [
+  "astropy",
   "griffe",
   "ipykernel",
   "matplotlib",
   "nbclient>=0.11.0",
   "nbformat>=5.11.1",
 ]
-optional-dependencies.test = [ "pytest", "pytest-cov" ]
+optional-dependencies.test = [ "astropy", "methodcard[symbolic]", "pytest", "pytest-cov" ]
+optional-dependencies.units = [ "astropy" ]
 urls."Source" = "https://github.com/max-models/plasmacoll"
+
+[project.entry-points."scope_profiler.opt_in_tags"]
+plasmacoll = "plasmacoll"
 
 [tool.setuptools.packages.find]
 where = [ "src" ]
@@ -80,6 +85,7 @@ typeCheckingMode = "standard"
 pythonpath = [ "src" ]
 testpaths = [ "src" ]
 addopts = "-ra"
+markers = [ "convergence: an order-of-accuracy test of a method card" ]
 # the kinematics tests make every marker collide in one step on purpose; the warning
 # itself is tested explicitly in test_mcc_extensions.py
 filterwarnings = [ "ignore:.*collision probability per step:RuntimeWarning" ]
@@ -102,8 +108,14 @@ include = [ "src" ]
 # CuPy is optional and not installed in CI
 allowed-unresolved-imports = [ "cupy" ]
 
+# the tests pass quantities as strings to settings annotated as floats
+[[tool.ty.overrides]]
+include = [ "src/plasmacoll/tests/**" ]
+rules = { invalid-argument-type = "ignore" }
+
 # PRs to devel test against the devel branches of the max-models packages (pinned in
 # uv.lock); PRs to main and the release use PyPI only (CI sets UV_NO_SOURCES).
 [tool.uv.sources]
 cunumpy = { git = "https://github.com/max-models/cunumpy", branch = "devel" }
+methodcard = { git = "https://github.com/max-models/methodcard", branch = "devel" }
 scope-profiler = { git = "https://github.com/max-models/scope-profiler", branch = "devel" }

@@ -5,6 +5,72 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-03
+
+### Added
+
+- `plasmacoll.units`: astropy quantities in the setup of a model. A setting given as a Quantity
+  (`0.1 * u.ns`), a string (`"0.1 ns"`, as in a configuration file) or a number in its documented
+  unit is stored as a plain number in that unit; a wrong dimension raises, and K, eV and J convert
+  into each other. `unit_field` and `convert_units` for dataclasses, `to_unit`, `to_array`,
+  `with_unit` and `rate_to_si`. astropy is imported only when a Quantity or a string is given
+  (the extra `plasmacoll[units]`). Moved from picnic.
+- The setup of plasmacoll takes quantities: `NeutralBackground`, `DensityProfile`,
+  `CollisionProcess`, `CrossSection` and its constructors, `ZeroDReactor`, the beam-gas
+  reactions, the process builders (argon, metals, caesium, hydrogen), `rate_coefficient`,
+  `RateTable`, `solve_eedf` and `swarm_table`, `VibrationalDistribution`, the charge states and
+  Rudd's cross sections. A tutorial, "Units".
+- Superelastic collisions in `solve_eedf`: an excitation with `upper_state` (and
+  `statistical_weight_ratio`, new `CollisionProcess` fields) also has its inverse, by detailed
+  balance; its rate is `"<name> (superelastic)"` and its power `power["superelastic"]`.
+  `MonteCarloCollisions` rejects such processes.
+- `states` of `solve_eedf` and `swarm_table`: vibrational or rotational levels of a gas with their
+  populations, which processes may name as their background or upper state.
+- The two-term solver checked against LoKI-B++ (`test_boltzmann_lokib.py`, reference in
+  `tests/unit/data/lokib_reference.json`, made by `tests/unit/_lokib_models.py`): temporal and
+  spatial growth, equal and Opal-Peterson-Beaty sharing, an H2-like gas with rotational and
+  vibrational levels and superelastic collisions; within LoKI-B's own discretisation error.
+- A Numerics section in the docs (header and sidebar): an overview of the model's equations
+  (`docs/src/content/docs/numerics/index.mdx`, with the main cards) and one page per module in
+  the order of the model (starlight-theme's `methodcard: { pages: true }`, theme 0.7.4).
+- Method cards (methodcard) on the equations of the model: the null-collision step (frequencies,
+  bound, candidates, forced collisions, attenuation, scattering angles), the collision
+  kinematics, the backgrounds and density profiles, the cross-section tables, the rate
+  coefficients, the two-term Boltzmann solver and its moments, the charge-state fractions, the
+  beam-gas reactions, the cross-section fits (Janev, Johnson, Vriens-Smeets, Park, Rudd,
+  Phelps, Lotz, Langevin), the vibrational populations, merging and splitting and the reactor,
+  with their assumptions and references. `test_method_cards.py` checks them: SymPy rules for 35
+  closed forms and fits, the observed order of seven discretisations (table and profile
+  interpolation, the Maxwellian and EEDF rate integrals, the rate table, the Boltzmann solver
+  and Rudd's moments), and the cards of the docs against those of the code. Adds the
+  `methodcard` dependency.
+- The docs show the cards: a "Numerics" page and a section on each method's API page.
+- `vriens_smeets_excitation_rate` and `vriens_smeets_ionization_rate` in
+  `plasmacoll.atomic_hydrogen`: the Maxwellian rate coefficients of Vriens and Smeets (1980) for
+  H(n) at any `n`, beyond the n = 24 where Johnson's excitation formula turns negative.
+- The reactions of a fast hydrogen or deuterium beam with H₂ gas (`hydrogen_beam_on_h2`,
+  `BeamGasReactions`): H⁻ stripping and H⁺ capture from Janev, Reiter and Samm (2003), eqs. (159)
+  and (144)–(145) (also in `JANEV_FITS`), gas ionization by protons from Rudd's model, and labelled
+  placeholders for the rest; as charge-state cross sections at one energy and as MCC processes.
+- A process kind `beam_ionization`: a fast projectile ionizes the target and keeps its velocity,
+  the target ion starts at rest and the electron with a few times the binding energy (the
+  backstreaming ions of an accelerator).
+- `collide_now` and `attenuation` for event-driven collisions.
+- Caesium: electron-impact ionization and Cs/Cs+ collisions on H2.
+- The neutrals each collision step consumes, per background.
+
+### Fixed
+
+- The docstrings render on the API pages: code spans instead of reST roles such as `:func:`.
+- `merge_markers`: the docstring gives the group size the code uses, `max(3, ceil(2 N / target))`.
+- `solve_eedf`: spatial growth converges with strong ionization (a secant step on `alpha/N`) and
+  on its own grid search (done with temporal growth, then spatial growth on the chosen grid);
+  the exponent of `F0` in a cell is van Leer's mean of the one-sided slopes, so that a first
+  iterate with empty cells no longer blows up the collision integrals (1000 Td on 500 cells
+  did not converge).
+
+## [0.4.0] - 2026-10-28
+
 ### Added
 
 - `plasmacoll.atomic_hydrogen`: electron excitation `n -> m` and ionization of H(n) for any
@@ -17,7 +83,6 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   products. `stripping_processes` builds these processes from a `ChargeStateTransitions`, so the
   markers and `charge_state_fractions` use the same cross sections; over many markers the
   populations follow the fractions along the path.
-
 - Argon and metal process sets for magnetron models (`plasmacoll.argon`, `plasmacoll.metals`):
   `argon_electron_processes` builds the electron-argon processes of a downloaded LXCat set,
   `argon_ion_processes` the isotropic and backscatter Ar+ + Ar processes from Phelps' 1994 or

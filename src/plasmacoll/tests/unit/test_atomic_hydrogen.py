@@ -20,6 +20,8 @@ from plasmacoll.atomic_hydrogen import (
     ionization_fit,
     oscillator_strength,
     transition_energy,
+    vriens_smeets_excitation_rate,
+    vriens_smeets_ionization_rate,
 )
 from plasmacoll.constants import ELECTRON_MASS
 
@@ -183,3 +185,40 @@ def test_johnson_is_clipped_where_it_turns_negative() -> None:
     for m in range(n + 1, n + 4):
         fit = excitation_fit(n, m)
         assert np.all(fit(fit.threshold * np.geomspace(1.001, 1e3, 200)) > 0.0)
+
+
+@pytest.mark.parametrize("n", [1, 5, 24, 25, 40, 60])
+def test_vriens_smeets_excitation_positive_above_johnson_range(n):
+    temperature = np.geomspace(0.1, 1.0e3, 50)
+    for m in (n + 1, n + 2, n + 5):
+        rate = vriens_smeets_excitation_rate(n, m, temperature)
+        assert np.all(np.isfinite(rate)) and np.all(rate > 0.0)
+
+
+@pytest.mark.parametrize(("n", "m"), [(1, 2), (2, 3), (5, 6), (10, 12), (24, 25)])
+def test_vriens_smeets_excitation_agrees_with_johnson(n, m):
+    # Johnson's cross sections averaged over a Maxwellian, within the factor 2
+    # by which the two fits differ near threshold
+    for temperature in (1.0, 10.0, 100.0):
+        johnson = rate_coefficient(
+            excitation_fit(n, m).cross_section(), temperature, ELECTRON_MASS
+        )
+        ratio = vriens_smeets_excitation_rate(n, m, temperature) / johnson
+        assert 0.25 < ratio < 1.5
+
+
+@pytest.mark.parametrize("n", [2, 5, 10, 20])
+def test_vriens_smeets_ionization_agrees_with_johnson(n):
+    for temperature in (2.0, 10.0, 50.0):
+        johnson = rate_coefficient(
+            ionization_fit(n).cross_section(), temperature, ELECTRON_MASS
+        )
+        ratio = vriens_smeets_ionization_rate(n, temperature) / johnson
+        assert 0.7 < ratio < 2.5
+
+
+def test_vriens_smeets_rejects_bad_levels():
+    with pytest.raises(ValueError):
+        vriens_smeets_excitation_rate(3, 3, 1.0)
+    with pytest.raises(ValueError):
+        vriens_smeets_ionization_rate(0, 1.0)

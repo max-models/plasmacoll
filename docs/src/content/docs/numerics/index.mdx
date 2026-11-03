@@ -1,0 +1,105 @@
+---
+title: Overview
+description: The equations of plasmacoll, from the null-collision step to the Boltzmann solver and the cross-section fits, and what the model leaves out.
+sidebar:
+  label: Overview
+---
+
+import MethodCard from '@max-models/starlight-theme/components/MethodCard.astro';
+
+plasmacoll collides charged markers with prescribed neutral gases by the null-collision Monte
+Carlo method: the collision step of a particle-in-cell code, or of a homogeneous reactor in a
+constant electric field. Around the operator it has the cross sections (tables and fits), their
+rate coefficients over a Maxwellian or any electron distribution, a two-term Boltzmann solver
+for the electrons of a gas mixture and the charge-state fractions of a fast beam, all from the
+same `CollisionProcess` objects. Collisions never change the targets: the gas is an input.
+
+Each equation on these pages is declared on the code that implements it, as a method card, and
+checked by the tests: 35 closed forms and fits against SymPy rules, seven discretisations against
+their order of convergence. The pages of the section list the cards module by module; this one
+shows how they fit together.
+
+## The collision step
+
+Markers are positions, velocities and weights in NumPy or CuPy arrays; a product takes the
+position and weight of the incident marker.
+
+1. **[Neutral backgrounds](/plasmacoll/numerics/background/):** drifting Maxwellians with
+   density and temperature profiles, from which each candidate draws a partner velocity.
+2. **[Cross sections](/plasmacoll/numerics/cross-sections/)** tabulated against the
+   centre-of-mass or the lab energy, linear between their points.
+3. **[Null-collision method](/plasmacoll/numerics/mcc/):** the frequency of every process, its
+   bound over all speeds, and the step: a marker is a candidate with probability
+   $1 - e^{-\nu_{\max}\Delta t}$ and then collides with process $k$ with probability
+   $\nu_k/\nu_{\max}$:
+
+<MethodCard name="plasmacoll.mcc.MonteCarloCollisions.collide" headingLevel={3} />
+
+4. **[Collision kinematics](/plasmacoll/numerics/process/)** of each kind of process
+   (elastic, excitation, ionization with its energy sharing, attachment, charge exchange,
+   stripping, beam ionization...) in the centre-of-mass frame, with the scattering angles of
+   the null-collision page.
+5. **[Merging and splitting](/plasmacoll/numerics/population/)** keep the number of markers in
+   bounds, conserving weight, momentum and energy; the
+   **[zero-dimensional reactor](/plasmacoll/numerics/reactor/)** adds a field and repeats the
+   step.
+
+## Swarms, rates and beams
+
+- **[Rate coefficients](/plasmacoll/numerics/rates/):** $\langle\sigma g\rangle$ over a
+  Maxwellian of relative speeds, tabulated in log-log, and the rate over a tabulated electron
+  energy distribution.
+- **[Two-term Boltzmann solver](/plasmacoll/numerics/boltzmann/):** the steady electron energy
+  distribution in a reduced field, with Scharfetter-Gummel fluxes and collision integrals that
+  conserve the particles exactly, and from it the transport and rate coefficients:
+
+<MethodCard name="plasmacoll.boltzmann.solve_eedf" headingLevel={3} />
+
+- **[Charge states](/plasmacoll/numerics/charge-states/)** of a fast beam along a path, by the
+  matrix exponential of the transition matrices, and the same cross sections as Monte Carlo
+  processes; **[beam in gas](/plasmacoll/numerics/beam-gas/)** assembles them for a hydrogen or
+  deuterium beam in H₂.
+
+## Data
+
+The fits are cards too, with their sources and ranges of validity:
+[H₂ and H⁻ (Janev, Reiter and Samm)](/plasmacoll/numerics/janev/),
+[hydrogen atoms](/plasmacoll/numerics/atomic-hydrogen/),
+[elastic e + H, H₂ (Park et al.)](/plasmacoll/numerics/hydrogen-elastic/),
+[secondary electrons of fast ions (Rudd)](/plasmacoll/numerics/secondaries/),
+[Ar⁺ in argon (Phelps)](/plasmacoll/numerics/argon/),
+[metals (Lotz)](/plasmacoll/numerics/metals/), [caesium](/plasmacoll/numerics/caesium/) and
+[vibrational populations](/plasmacoll/numerics/vibrational/). Electron-argon sets are LXCat
+files the user downloads; the proton tables of `proton_hydrogen_processes` are inputs.
+
+## Units and conventions
+
+Energies and temperatures ($kT$) in eV, masses, speeds, densities and cross sections in SI
+(CODATA 2018; $e$ and $k_B$ exact), the reduced field in Td ($10^{-21}$ V m²). Electron cross
+sections are looked up at the electron's energy with the target at rest (lab frame), ion-neutral
+ones mostly at the centre-of-mass energy; every process says which. $F_0$ is normalised by
+$\int \varepsilon^{1/2} F_0\,d\varepsilon = 1$.
+
+## Not in the model
+
+- Coulomb collisions, recombination, and collisions between two tracked species (except a
+  tracked species as the target of a `DynamicProfile`, which the collisions do not change).
+- More than one collision per marker and step; products collide from the next step on.
+- The energy and momentum of untracked partners: detachment fragments, the ion recoil in
+  electron-impact ionization, the recoils in beam ionization, the binding energies in stripping.
+- Gas depletion and heating: the consumed neutrals are reported, nothing is solved for the gas.
+- In the Boltzmann solver: multi-term corrections, time dependence, electron-electron collisions,
+  the continuous approximation for rotations (rotational levels are taken one by one), and
+  superelastic collisions in the Monte Carlo collisions.
+- Vibrational kinetics: the populations are a prescribed Boltzmann distribution.
+- Data: the beam-gas placeholders, deuterium from hydrogen at equal speed, the capture fit above
+  200 keV, Park's momentum transfer above a few hundred eV, Lotz without the deeper subshells.
+
+## Verification
+
+Besides the checks of the cards, the tests compare the collided fraction with
+$(1 - e^{-\nu_{\max}\Delta t})\nu/\nu_{\max}$, the relaxation of ions and electrons with closed
+forms of Maxwell molecules (temperature, drift velocity, Wannier's energy), the Boltzmann solver
+with the Maxwellian and Druyvesteyn distributions, Reid's and the Lucas-Saelee model gases and
+BOLOS, the charge-state fractions and the beam markers with each other, and the fits with the
+values printed in their sources.

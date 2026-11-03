@@ -28,7 +28,7 @@ key       reaction             CCC data the fits reproduce
 
 The momentum-transfer cross section is the one a collision operator with
 isotropic elastic scattering, or a two-term Boltzmann solver, needs
-(:meth:`ElasticFit.cross_section`); the integral one goes with an anisotropic
+(`ElasticFit.cross_section`); the integral one goes with an anisotropic
 angular distribution. Energies are the electron's energy with the target at
 rest (``energy_frame="lab"``), in eV; cross sections are in m^2. The fits also
 hold for D, T and the isotopologues of H2.
@@ -56,7 +56,7 @@ How good they are (checked in the tests):
   electrons.
 
 Beyond the last table point (10 keV by default) the last value holds, as for
-any :class:`~plasmacoll.CrossSection`.
+any `plasmacoll.CrossSection`.
 """
 
 from __future__ import annotations
@@ -65,9 +65,11 @@ import math
 from dataclasses import dataclass
 
 import numpy as np
+from methodcard import Rule, method
 
 from plasmacoll._types import Array
 from plasmacoll.cross_sections import CrossSection
+from plasmacoll.units import to_unit
 
 __all__ = [
     "ELASTIC_FITS",
@@ -85,7 +87,7 @@ PARK_2022 = (
 )
 _SHORT = "Park et al. (2022), CCC fit"
 
-#: The kinds of cross section :meth:`ElasticFit.cross_section` tabulates.
+#: The kinds of cross section `ElasticFit.cross_section` tabulates.
 _KINDS = ("momentum_transfer", "integral")
 
 
@@ -118,6 +120,19 @@ class ElasticFit:
         """The reaction and its source, for plots and messages."""
         return f"{self.reaction}: {_SHORT}"
 
+    @method(
+        equations={
+            "integral": r"\sigma(E) = \Big(\beta_0 + \frac{\beta_1}{E + 1} + \frac{\beta_2}{E^2 + 1}\Big)\frac{\big(E^{\beta_3} + e^{-\beta_4 E}\big)^{\beta_5}}{(E + 1)^3 + \beta_6(E + 1)^2 + \beta_7(E + 1)}",
+        },
+        assumptions=(
+            r"$E$ the electron's energy in eV with the target at rest, $\sigma$ in m$^2$; $\beta_j$ of tables I and II",
+            r"fitted to the CCC calculations from 0.001 to 500 eV (H) and 0.1 to 250 eV (H$_2$), within 6 %; also for D, T and the isotopologues of H$_2$",
+        ),
+        references=(
+            "[Park et al., Plasma Sources Sci. Technol. 31, 065013 (2022)](https://doi.org/10.1088/1361-6595/ac781f), eq. (26)",
+        ),
+        symbolic=lambda: _elastic_rules("integral"),
+    )
     def integral(self, energy: Array | float) -> np.ndarray:
         """The integral elastic cross section in m^2 at ``energy`` (eV), eq. (26)."""
         e = np.asarray(energy, dtype=float)
@@ -143,6 +158,21 @@ class ElasticFit:
 
         return eta(self.eta_forward), eta(self.eta_backward)
 
+    @method(
+        equations={
+            "angular": r"I(E, \chi) = C\,\frac{\eta_F(\eta_F + 1)}{\pi(2\eta_F + 1 - \cos\chi)^2} + (1 - C)\,\frac{\eta_B(\eta_B + 1)}{\pi(2\eta_B + 1 + \cos\chi)^2}, \qquad 2\pi\int_{-1}^{1} I\,d\cos\chi = 1",
+            "weight": r"C(E) = \alpha_1 + \alpha_2\tanh\big(\alpha_3(E - \alpha_4)\big)",
+            "screening": r"\eta(E) = \frac{\lambda_1}{E + \lambda_2} + \lambda_3 \qquad (\eta = \lambda_3 \text{ for } \lambda_1 = 0)",
+        },
+        assumptions=(
+            r"a forward and a backward screened-Coulomb peak; the differential cross section is $\sigma(E)\,I(E, \chi)$",
+            r"above a few hundred eV the fit has too much large-angle scattering",
+        ),
+        references=(
+            "[Park et al., Plasma Sources Sci. Technol. 31, 065013 (2022)](https://doi.org/10.1088/1361-6595/ac781f), eqs. (17), (19), (20)",
+        ),
+        symbolic=lambda: _elastic_rules("angular"),
+    )
     def angular_distribution(
         self, energy: Array | float, cos_chi: Array | float
     ) -> np.ndarray:
@@ -158,6 +188,24 @@ class ElasticFit:
         backward = eta_b * (eta_b + 1.0) / (math.pi * (2.0 * eta_b + 1.0 + mu) ** 2)
         return weight * forward + (1.0 - weight) * backward
 
+    @method(
+        equations={
+            "momentum_transfer": r"\sigma_m = \sigma\int (1 - \cos\chi)\,I\,d\Omega = 2\pi\sigma\big[C\,\Phi_F + (1 - C)\,\Phi_B\big]",
+            "phi": r"\Phi_F = \frac{\eta_F(\eta_F + 1)}{\pi}\Big[\frac{\eta_F}{\eta_F + 1} - 1 + \ln\frac{\eta_F + 1}{\eta_F}\Big], \qquad \Phi_B = \frac{\eta_B(\eta_B + 1)}{\pi}\Big[\frac{\eta_B + 1}{\eta_B} - 1 + \ln\frac{\eta_B}{\eta_B + 1}\Big]",
+        },
+        assumptions=(
+            r"the cross section of an isotropic elastic process and of `solve_eedf`",
+            r"too large above a few hundred eV (H: 2.2 times the first Born value at 1 keV); H$_2$ within 10 % of England et al. from 0.02 to 5 eV, 23 % above it at 0 eV",
+        ),
+        references=(
+            "[Park et al., Plasma Sources Sci. Technol. 31, 065013 (2022)](https://doi.org/10.1088/1361-6595/ac781f), eqs. (28)-(30)",
+        ),
+        components=(
+            "plasmacoll.hydrogen_elastic.ElasticFit.integral",
+            "plasmacoll.hydrogen_elastic.ElasticFit.angular_distribution",
+        ),
+        symbolic=lambda: _elastic_rules("momentum_transfer"),
+    )
     def momentum_transfer(self, energy: Array | float) -> np.ndarray:
         """The momentum-transfer cross section in m^2 at ``energy`` (eV), eqs. (28)-(30).
 
@@ -197,9 +245,9 @@ class ElasticFit:
 
         Args:
             kind: ``"momentum_transfer"`` for an ``elastic`` process with
-                isotropic scattering and for :func:`~plasmacoll.solve_eedf`, or
+                isotropic scattering and for `plasmacoll.solve_eedf`, or
                 ``"integral"`` for one with an anisotropic angular distribution.
-            max_energy: The last table energy in eV.
+            max_energy: The last table energy in eV (or a Quantity).
             num: Number of logarithmically spaced points.
 
         Raises:
@@ -210,6 +258,7 @@ class ElasticFit:
         function = (
             self.momentum_transfer if kind == "momentum_transfer" else self.integral
         )
+        max_energy = to_unit(max_energy, "eV", "max_energy")
         energy = np.concatenate([[0.0], np.geomspace(1.0e-3, max_energy, num)])
         name = (
             "momentum transfer" if kind == "momentum_transfer" else "integral elastic"
@@ -217,6 +266,56 @@ class ElasticFit:
         return CrossSection.from_function(
             function, energy, label=f"{self.reaction} ({name}): {_SHORT}"
         )
+
+
+def _elastic_rules(key: str) -> dict:
+    """The SymPy rule ``key`` of the fits of e + H (for the tests).
+
+    The momentum-transfer rule integrates the angular distribution symbolically,
+    which checks the closed forms of eqs. (28)-(30).
+    """
+    import sympy
+
+    fit = ELASTIC_FITS["H"]
+    e = sympy.symbols("energy", positive=True)
+    mu = sympy.symbols("cos_chi", real=True)
+    f = sympy.Float
+    b0, b1, b2, b3, b4, b5, b6, b7 = (f(b) for b in fit.beta)
+    integral = (
+        (b0 + b1 / (e + 1) + b2 / (e**2 + 1))
+        * (e**b3 + sympy.exp(-b4 * e)) ** b5
+        / ((e + 1) ** 3 + b6 * (e + 1) ** 2 + b7 * (e + 1))
+    )
+    energy = {"energy": (0.01, 500.0)}
+    if key == "integral":
+        return {key: Rule(integral, fit.integral, energy)}
+    a1, a2, a3, a4 = (f(a) for a in fit.alpha)
+    weight = a1 + a2 * sympy.tanh(a3 * (e - a4))
+
+    def eta(lam):
+        return f(lam[0]) / (e + f(lam[1])) + f(lam[2])
+
+    def peak(eta, mu):
+        return eta * (eta + 1) / (sympy.pi * (2 * eta + 1 - mu) ** 2)
+
+    eta_f, eta_b = eta(fit.eta_forward), eta(fit.eta_backward)
+    if key == "angular":
+        angular = weight * peak(eta_f, mu) + (1 - weight) * peak(eta_b, -mu)
+        ranges = {**energy, "cos_chi": (-1.0, 1.0)}
+        return {key: Rule(angular, fit.angular_distribution, ranges)}
+    # 2 pi int (1 - cos chi) I d(cos chi) of each peak, symbolically in eta = x;
+    # simplify takes the logarithms of negative numbers out
+    x = sympy.symbols("x", positive=True)
+    forward, backward = (
+        sympy.simplify(
+            sympy.integrate(2 * sympy.pi * (1 - mu) * peak(x, sign * mu), (mu, -1, 1))
+        )
+        for sign in (1, -1)
+    )
+    momentum = integral * (
+        weight * forward.subs(x, eta_f) + (1 - weight) * backward.subs(x, eta_b)
+    )
+    return {key: Rule(momentum, fit.momentum_transfer, energy, rtol=1e-9)}
 
 
 #: The fits by target (tables I and II of the paper).

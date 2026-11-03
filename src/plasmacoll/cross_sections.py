@@ -1,11 +1,11 @@
 """Tabulated collision cross sections and readers for LXCat files and plain tables.
 
-A :class:`CrossSection` is a table of cross section (m^2) against collision
+A `CrossSection` is a table of cross section (m^2) against collision
 energy (eV), interpolated linearly between the table points, held at the last
 value beyond the table and zero below the threshold. Tables come from a
-two-column text file (:meth:`CrossSection.from_table`), from an LXCat file
-(:func:`read_lxcat`), or from a function sampled on an energy grid
-(:meth:`CrossSection.from_function`).
+two-column text file (`CrossSection.from_table`), from an LXCat file
+(`read_lxcat`), or from a function sampled on an energy grid
+(`CrossSection.from_function`).
 """
 
 from __future__ import annotations
@@ -18,10 +18,12 @@ from pathlib import Path
 import cunumpy as xp
 import numpy as np
 import scope_profiler as sp
+from methodcard import ConvergenceProblem, Rule, method
 
 from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll._types import Array, PathLikeStr
 from plasmacoll.constants import ELEMENTARY_CHARGE
+from plasmacoll.units import to_array, to_unit
 
 __all__ = [
     "LXCAT_ION_PROCESS_KINDS",
@@ -40,6 +42,36 @@ LXCAT_PROCESS_KINDS = ("ELASTIC", "EFFECTIVE", "EXCITATION", "IONIZATION", "ATTA
 LXCAT_ION_PROCESS_KINDS = ("ISOTROPIC", "BACKSCAT")
 
 
+def _interpolation_problem() -> ConvergenceProblem:
+    """A smooth cross section tabulated with spacing ``h``, against the function between."""
+    energy = np.linspace(1.0, 3.0, 401)
+
+    def sigma(e: np.ndarray) -> np.ndarray:
+        return 1.0e-20 * (1.0 + np.exp(-e) * np.sin(3.0 * e))
+
+    def error(step: float) -> float:
+        table = CrossSection.from_function(
+            sigma, np.linspace(1.0, 3.0, round(2.0 / step) + 1)
+        )
+        return float(np.max(np.abs(xp.to_numpy(table(energy)) - sigma(energy))))
+
+    return ConvergenceProblem(error, steps=[0.2, 0.1, 0.05, 0.025])
+
+
+@method(
+    equations={
+        "interpolation": r"\sigma(E) = \sigma_i + \frac{\sigma_{i+1} - \sigma_i}{E_{i+1} - E_i}\,(E - E_i), \qquad E_i \le E \le E_{i+1}",
+        "outside": r"\sigma(E) = \begin{cases} 0 & E < E_\mathrm{th} \\ \sigma_0 & E < E_0 \\ \sigma_N & E > E_N \end{cases}",
+    },
+    order=2,
+    assumptions=(
+        r"linear between the table points, as the Turner et al. benchmark prescribes; energies in eV, cross sections in m$^2$",
+    ),
+    references=(
+        "[Turner et al., Phys. Plasmas 20, 013507 (2013)](https://doi.org/10.1063/1.4775084)",
+    ),
+    problem=_interpolation_problem,
+)
 @dataclass(frozen=True)
 class CrossSection:
     """A cross section tabulated against collision energy.
@@ -47,7 +79,9 @@ class CrossSection:
     ``energy`` is in eV and ``sigma`` in m^2. Values are interpolated linearly
     between table points, as prescribed by the Turner et al. (2013) benchmark.
     Beyond the last point the last value is used. Below ``threshold`` (eV)
-    the cross section is zero.
+    the cross section is zero. ``energy``, ``sigma`` and ``threshold`` take
+    astropy Quantities (``[1, 10] * u.keV``), strings (``"[1, 2] cm2"``) or
+    plain numbers and arrays in eV and m^2.
 
     Attributes:
         energy: Table energies in eV, non-decreasing.
@@ -62,9 +96,11 @@ class CrossSection:
     label: str = ""
 
     def __post_init__(self) -> None:
-        """Validate and normalize the table."""
-        energy = xp.asarray(self.energy, dtype=float)
-        sigma = xp.asarray(self.sigma, dtype=float)
+        """Convert to eV and m^2, validate and normalize the table."""
+        energy = xp.asarray(to_array(self.energy, "eV", "energy"), dtype=float)
+        sigma = xp.asarray(to_array(self.sigma, "m^2", "sigma"), dtype=float)
+        threshold = to_unit(self.threshold, "eV", "threshold")
+        object.__setattr__(self, "threshold", threshold)
         if energy.ndim != 1 or energy.shape != sigma.shape:
             raise ValueError("energy and sigma must be 1D arrays of equal length")
         if energy.size < 2:
@@ -93,12 +129,17 @@ class CrossSection:
     ) -> CrossSection:
         """Return a cross section that is ``sigma`` (m^2) at every energy above threshold.
 
+        The physical arguments take astropy Quantities, strings or plain
+        numbers in the units below.
+
         Args:
             sigma: The cross section in m^2.
             threshold: Energy in eV below which the cross section is zero.
             max_energy: Last table energy in eV; the value continues beyond it anyway.
             label: A name for plots and messages.
         """
+        sigma = to_unit(sigma, "m^2", "sigma")
+        max_energy = to_unit(max_energy, "eV", "max_energy")
         return cls(
             energy=xp.asarray([0.0, float(max_energy)]),
             sigma=xp.asarray([float(sigma), float(sigma)]),
@@ -107,6 +148,17 @@ class CrossSection:
         )
 
     @classmethod
+    @method(
+        equations={
+            "cross_section": r"\sigma(E) = \frac{K}{g}, \qquad g = \sqrt{\frac{2eE}{m}}",
+            "frequency": r"\nu = n\,\sigma g = n K",
+        },
+        assumptions=(
+            r"$m$ the reduced mass for a centre-of-mass process, the incident mass for a lab one",
+            r"2001 logarithmic points from $10^{-6}$ to $10^6$ eV, the end values outside",
+        ),
+        symbolic=lambda: _maxwell_molecule_rules(),
+    )
     def maxwell_molecule(
         cls,
         rate_coefficient: float,
@@ -126,7 +178,8 @@ class CrossSection:
         as the temperature, have closed-form solutions, which makes this the
         cross section of choice for benchmarks. The table has ``num``
         logarithmically spaced points from ``min_energy`` to ``max_energy`` (eV);
-        below and above them the end values are used.
+        below and above them the end values are used. The physical arguments
+        take astropy Quantities, strings or plain numbers in the units below.
 
         Args:
             rate_coefficient: ``K = sigma g`` in m^3/s.
@@ -137,6 +190,10 @@ class CrossSection:
             num: Number of table points.
             label: A name for plots and messages.
         """
+        rate_coefficient = to_unit(rate_coefficient, "m^3/s", "rate_coefficient")
+        mass = to_unit(mass, "kg", "mass")
+        min_energy = to_unit(min_energy, "eV", "min_energy")
+        max_energy = to_unit(max_energy, "eV", "max_energy")
         if rate_coefficient < 0.0:
             raise ValueError("rate_coefficient must be >= 0")
         if mass <= 0.0:
@@ -169,10 +226,12 @@ class CrossSection:
 
         Args:
             function: Cross section in m^2 as a function of energy in eV.
-            energy: The table energies in eV, non-decreasing.
+            energy: The table energies in eV, non-decreasing; also a Quantity
+                or a string such as ``"[1, 10, 100] keV"``.
             threshold: Energy in eV below which the cross section is zero.
             label: A name for plots and messages.
         """
+        energy = to_array(energy, "eV", "energy")
         grid = np.asarray(xp.to_numpy(xp.asarray(energy, dtype=float)))
         values = np.asarray(function(grid), dtype=float)
         return cls(
@@ -183,6 +242,15 @@ class CrossSection:
         )
 
     @classmethod
+    @method(
+        equations={
+            "mixture": r"\sigma_\mathrm{mix}(E) = \sum_v w_v\,\sigma_v(E), \qquad w_v = \frac{n_v}{\sum_u n_u}",
+        },
+        assumptions=(
+            r"on the union of the level tables plus the points $E_{\mathrm{th},v}(1 - 10^{-9})$ and $E_{\mathrm{th},v}$ of every level, so that steps stay steps",
+            r"each level's threshold applied in its own term; the mixture's threshold is 0",
+        ),
+    )
     def vibrational_mixture(
         cls,
         level_cross_sections: Sequence[CrossSection],
@@ -194,7 +262,7 @@ class CrossSection:
         ``sigma_mix(E) = sum_v w_v * sigma_v(E)``, with ``w_v`` normalized from
         ``populations`` (they need not already sum to 1). A level's own
         threshold and tail behaviour are respected because each ``sigma_v(E)``
-        is evaluated through its own :meth:`__call__` before summing, and a
+        is evaluated through its own `__call__` before summing, and a
         table point is placed on either side of every threshold so that the
         step is not blurred into a ramp.
 
@@ -202,7 +270,7 @@ class CrossSection:
         per-level cross sections. Use it with level-resolved data (for example
         H2(v) dissociative attachment from Wadehra, Phys. Rev. A 29, 106 (1984),
         or an LXCat entry) and the populations of a
-        :class:`~plasmacoll.vibrational.VibrationalDistribution`.
+        `plasmacoll.vibrational.VibrationalDistribution`.
 
         If ``populations`` covers only some of a distribution's levels, the
         omitted levels' population is redistributed among the included ones by
@@ -270,10 +338,14 @@ class CrossSection:
             path: The text file.
             threshold: Energy in eV below which the cross section is zero.
             delimiter: Column separator; whitespace if None.
-            energy_unit: Factor converting the first column to eV.
-            sigma_unit: Factor converting the second column to m^2.
+            energy_unit: Factor converting the first column to eV, or the unit
+                of the column as a quantity, e.g. ``"1 keV"`` or ``1 * u.keV``.
+            sigma_unit: Factor converting the second column to m^2, or the unit
+                of the column as a quantity, e.g. ``"1 cm2"``.
             label: A name for plots and messages; the file name if empty.
         """
+        energy_unit = to_unit(energy_unit, "eV", "energy_unit")
+        sigma_unit = to_unit(sigma_unit, "m^2", "sigma_unit")
         energies = []
         sigmas = []
         for line in Path(path).read_text().splitlines():
@@ -294,6 +366,15 @@ class CrossSection:
         )
 
     @classmethod
+    @method(
+        equations={
+            "elastic": r"\sigma_\mathrm{el}(E) = \max\Big(\sigma_\mathrm{eff}(E) - \sum_j \sigma_{\mathrm{inel},j}(E),\ 0\Big)",
+        },
+        assumptions=(
+            r"on the union of the tables plus the points $E_\mathrm{th}(1 - 10^{-9})$ and $E_\mathrm{th}$ of every inelastic threshold",
+            r"warns when the difference falls below $-0.01\,\sigma_\mathrm{eff}$ anywhere: an inconsistent set",
+        ),
+    )
     def elastic_from_effective(
         cls,
         effective: CrossSection,
@@ -349,7 +430,7 @@ class CrossSection:
         )
 
     def with_threshold(self, threshold: float) -> CrossSection:
-        """Return a copy of this table with another threshold (eV)."""
+        """Return a copy of this table with another threshold (eV, or a Quantity)."""
         return CrossSection(
             energy=self.energy,
             sigma=self.sigma,
@@ -364,14 +445,38 @@ class CrossSection:
         return xp.where(energy < self.threshold, 0.0, sigma)
 
 
+def _maxwell_molecule_rules() -> dict:
+    """The SymPy rule of `CrossSection.maxwell_molecule` (for the tests)."""
+    import sympy
+
+    k, m, e = sympy.symbols("rate_coefficient mass energy", positive=True)
+    rule = k / sympy.sqrt(2 * e * sympy.Float(ELEMENTARY_CHARGE) / m)
+    return {
+        "cross_section": Rule(
+            rule,
+            implementation=lambda rate_coefficient, mass, energy: float(
+                xp.to_numpy(
+                    CrossSection.maxwell_molecule(rate_coefficient, mass)(energy)
+                )
+            ),
+            ranges={
+                "rate_coefficient": (1.0e-14, 1.0e-12),
+                "mass": (1.0e-30, 1.0e-26),
+                "energy": (1.0e-3, 1.0e3),
+            },
+            rtol=1.0e-4,
+        )
+    }
+
+
 @dataclass(frozen=True)
 class LXCatProcess:
     """One process block of an LXCat cross-section file.
 
     Attributes:
-        kind: The block keyword, one of :data:`LXCAT_PROCESS_KINDS`, or for an
+        kind: The block keyword, one of `LXCAT_PROCESS_KINDS`, or for an
             ion-neutral block the type of its ``PROCESS`` line in capitals, e.g.
-            ``ISOTROPIC`` or ``BACKSCAT`` (:data:`LXCAT_ION_PROCESS_KINDS`).
+            ``ISOTROPIC`` or ``BACKSCAT`` (`LXCAT_ION_PROCESS_KINDS`).
         target: The left side of the reaction line, e.g. ``Ar``; for an
             ion-neutral block the neutral of its ``SPECIES`` line.
         product: The right side of the reaction line, e.g. ``Ar^+`` (empty if none).
@@ -516,7 +621,7 @@ def find_lxcat_process(
     """Return the first process whose kind or ``PROCESS`` comment is ``wanted``.
 
     Args:
-        processes: Processes from :func:`read_lxcat`.
+        processes: Processes from `read_lxcat`.
         wanted: A kind such as ``"IONIZATION"`` or a full ``PROCESS`` comment
             such as ``"E + Ar -> E + E + Ar+, Ionization"``.
 
@@ -538,10 +643,10 @@ def elastic_from_lxcat(
     If the set has an ``ELASTIC`` block it is returned as is. Otherwise the
     ``EXCITATION``, ``IONIZATION`` and ``ATTACHMENT`` cross sections are
     subtracted from the ``EFFECTIVE`` one with
-    :meth:`CrossSection.elastic_from_effective`.
+    `CrossSection.elastic_from_effective`.
 
     Args:
-        processes: Processes from :func:`read_lxcat`.
+        processes: Processes from `read_lxcat`.
         target: Use only the blocks of this target (e.g. ``"Ar"``); all if None.
 
     Raises:

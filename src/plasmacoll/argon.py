@@ -3,8 +3,8 @@
 Electron-argon cross sections come from a set the user downloads from LXCat:
 the standard ones are the Phelps, SIGLO, Biagi, Hayashi and IST-Lisbon
 databases. LXCat does not allow third parties to redistribute its data, so
-none is included here; :func:`argon_electron_processes` turns a downloaded
-file into the processes of :class:`~plasmacoll.mcc.MonteCarloCollisions`.
+none is included here; `argon_electron_processes` turns a downloaded
+file into the processes of `plasmacoll.mcc.MonteCarloCollisions`.
 
 The Ar+ + Ar processes are the isotropic and backward elastic scattering
 components of Phelps:
@@ -34,6 +34,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 import numpy as np
+from methodcard import Rule, method
 
 from plasmacoll._types import PathLikeStr
 from plasmacoll.constants import ATOMIC_MASS
@@ -44,6 +45,7 @@ from plasmacoll.cross_sections import (
     read_lxcat,
 )
 from plasmacoll.process import CollisionProcess
+from plasmacoll.units import to_unit
 
 __all__ = [
     "ARGON_IONIZATION_ENERGY",
@@ -64,7 +66,7 @@ ARGON_IONIZATION_ENERGY = 15.7596119
 #: The parameter ``w`` in eV of Opal-Peterson-Beaty energy sharing in argon
 #: (Opal, Peterson and Beaty, J. Chem. Phys. 55, 4100 (1971)).
 ARGON_OPAL_ENERGY = 10.0
-#: The Phelps fits :func:`argon_ion_cross_sections` offers.
+#: The Phelps fits `argon_ion_cross_sections` offers.
 PHELPS_REVISIONS = ("1994", "2005")
 
 
@@ -101,6 +103,56 @@ def _phelps(energy: np.ndarray, revision: str) -> tuple[np.ndarray, np.ndarray]:
     return _phelps_1994(energy) if revision == "1994" else _phelps_2005(energy)
 
 
+def _phelps_rules(kind: str) -> dict:
+    """The SymPy rules of Phelps' fits of ``kind`` (for the tests)."""
+    import sympy
+
+    e = sympy.symbols("energy", positive=True)
+    f = sympy.Float
+    eps = 2 * e
+    isotropic_1994 = f(2.0e-19) / (sympy.sqrt(eps) * (1 + eps)) + f(3.0e-19) * eps / (
+        1 + eps / 3
+    ) ** f(2.3)
+    momentum_1994 = f(1.15e-18) * eps ** f(-0.1) * (1 + f(0.015) / eps) ** f(0.6)
+    expressions = {
+        "isotropic_1994": isotropic_1994,
+        "isotropic_2005": f(21.6e-20) / sympy.sqrt(e),
+        "backscatter_1994": (momentum_1994 - isotropic_1994) / 2,
+        "backscatter_2005": f(52.0e-20)
+        / e ** f(0.08)
+        / (1 + f(0.08) / e)
+        / (1 + e / 1000) ** f(0.3),
+    }
+    function = (
+        phelps_argon_ion_isotropic
+        if kind == "isotropic"
+        else phelps_argon_ion_backscatter
+    )
+
+    def rule(revision: str) -> Rule:
+        return Rule(
+            expressions[f"{kind}_{revision}"],
+            implementation=lambda energy: function(np.array([energy]), revision)[0],
+            ranges={"energy": (1.0e-3, 1.0e3)},
+        )
+
+    return {f"{kind}_{revision}": rule(revision) for revision in PHELPS_REVISIONS}
+
+
+@method(
+    equations={
+        "isotropic_1994": r"Q_i = \frac{2\cdot10^{-19}}{\epsilon^{0.5}(1 + \epsilon)} + \frac{3\cdot10^{-19}\,\epsilon}{(1 + \epsilon/3)^{2.3}}\ \mathrm{m}^2, \qquad \epsilon = 2E",
+        "isotropic_2005": r"Q_i = \frac{21.6\cdot10^{-20}}{E^{0.5}}\ \mathrm{m}^2",
+    },
+    assumptions=(
+        r"$E$ the centre-of-mass energy in eV, $> 0$; $\epsilon = 2E$ the laboratory energy of the ion on a target at rest",
+    ),
+    references=(
+        "[Phelps, J. Appl. Phys. 76, 747 (1994)](https://doi.org/10.1063/1.357820), eqs. (2), (3)",
+        "Phelps, collision-data pages (`collision_data/ionneutral/IONATOM.TXT`, 2005), private communication",
+    ),
+    symbolic=lambda: _phelps_rules("isotropic"),
+)
 def phelps_argon_ion_isotropic(
     energy: np.ndarray, revision: str = "1994"
 ) -> np.ndarray:
@@ -108,11 +160,25 @@ def phelps_argon_ion_isotropic(
 
     Args:
         energy: Centre-of-mass energies in eV, > 0.
-        revision: One of :data:`PHELPS_REVISIONS`, see the module docstring.
+        revision: One of `PHELPS_REVISIONS`, see the module docstring.
     """
     return _phelps(energy, revision)[0]
 
 
+@method(
+    equations={
+        "backscatter_1994": r"Q_b = \frac{Q_m - Q_i}{2}, \qquad Q_m = 1.15\cdot10^{-18}\,\epsilon^{-0.1}\Big(1 + \frac{0.015}{\epsilon}\Big)^{0.6}\ \mathrm{m}^2, \qquad \epsilon = 2E",
+        "backscatter_2005": r"Q_b = \frac{52\cdot10^{-20}}{E^{0.08}\,(1 + 0.08/E)\,(1 + E/1000)^{0.3}}\ \mathrm{m}^2",
+    },
+    assumptions=(
+        r"$E$ the centre-of-mass energy in eV, $> 0$; at high energies $Q_b$ is the symmetric charge-exchange cross section",
+    ),
+    references=(
+        "[Phelps, J. Appl. Phys. 76, 747 (1994)](https://doi.org/10.1063/1.357820), eqs. (2), (3)",
+        "Phelps, collision-data pages (`collision_data/ionneutral/IONATOM.TXT`, 2005), private communication",
+    ),
+    symbolic=lambda: _phelps_rules("backscatter"),
+)
 def phelps_argon_ion_backscatter(
     energy: np.ndarray, revision: str = "1994"
 ) -> np.ndarray:
@@ -120,7 +186,7 @@ def phelps_argon_ion_backscatter(
 
     Args:
         energy: Centre-of-mass energies in eV, > 0.
-        revision: One of :data:`PHELPS_REVISIONS`, see the module docstring.
+        revision: One of `PHELPS_REVISIONS`, see the module docstring.
     """
     return _phelps(energy, revision)[1]
 
@@ -135,10 +201,11 @@ def argon_ion_cross_sections(
 
     The tables have ``num`` logarithmically spaced points from ``min_energy``
     to ``max_energy`` (eV), the range of the LXCat tables; below and above
-    them the end values are used.
+    them the end values are used. The energies take astropy Quantities,
+    strings such as ``"10 keV"`` or plain numbers in eV.
 
     Args:
-        revision: One of :data:`PHELPS_REVISIONS`, see the module docstring.
+        revision: One of `PHELPS_REVISIONS`, see the module docstring.
         min_energy: First table energy in eV.
         max_energy: Last table energy in eV.
         num: Number of table points.
@@ -147,6 +214,8 @@ def argon_ion_cross_sections(
         ``{"isotropic": Q_i, "backscatter": Q_b}``.
     """
     _check_revision(revision)
+    min_energy = to_unit(min_energy, "eV", "min_energy")
+    max_energy = to_unit(max_energy, "eV", "max_energy")
     if not 0.0 < min_energy < max_energy:
         raise ValueError("need 0 < min_energy < max_energy")
     energy = np.geomspace(min_energy, max_energy, num)
@@ -177,6 +246,20 @@ def _ion_tables_from_lxcat(
     return tables
 
 
+@method(
+    equations={
+        "momentum_transfer": r"Q_m = Q_i + 2Q_b",
+    },
+    assumptions=(
+        r"$Q_i$ as `elastic` (isotropic), $Q_b$ as `backscatter` (the ion leaves with the neutral's velocity: charge exchange), both against the centre-of-mass energy",
+        r"Phelps' fits on 401 logarithmic energies from $10^{-4}$ to $10^4$ eV with the end values outside, or the `ISOTROPIC` and `BACKSCAT` blocks of the LXCat Phelps database",
+    ),
+    components=(
+        "plasmacoll.argon.phelps_argon_ion_isotropic",
+        "plasmacoll.argon.phelps_argon_ion_backscatter",
+        "plasmacoll.process.CollisionProcess",
+    ),
+)
 def argon_ion_processes(
     cross_sections: Mapping[str, CrossSection]
     | Sequence[LXCatProcess]
@@ -194,10 +277,10 @@ def argon_ion_processes(
     the neutral's velocity: the charge exchange.
 
     Args:
-        cross_sections: ``None`` for Phelps' fits (:func:`argon_ion_cross_sections`),
+        cross_sections: ``None`` for Phelps' fits (`argon_ion_cross_sections`),
             a mapping with the keys ``"isotropic"`` and ``"backscatter"``, or
             the ``ISOTROPIC`` and ``BACKSCAT`` blocks of the LXCat Phelps
-            database, read with :func:`~plasmacoll.cross_sections.read_lxcat`
+            database, read with `plasmacoll.cross_sections.read_lxcat`
             or given as the path of the file.
         background: The name of the argon background.
         neutral: A species name for the fast neutral of the charge exchange;
@@ -255,14 +338,14 @@ def argon_electron_processes(
 
     The set must have an ``ELASTIC`` or an ``EFFECTIVE`` block (the latter
     less the inelastic blocks, see
-    :func:`~plasmacoll.cross_sections.elastic_from_lxcat`) and at least one
+    `plasmacoll.cross_sections.elastic_from_lxcat`) and at least one
     ``IONIZATION`` block; every ``EXCITATION`` block becomes an excitation
     process (the SIGLO set lumps them into one level at 11.5 eV). All are
     looked up at the electron's energy (``energy_frame="lab"``) with isotropic
     scattering, which is what a momentum-transfer cross section is for.
 
     Args:
-        lxcat: The processes from :func:`~plasmacoll.cross_sections.read_lxcat`,
+        lxcat: The processes from `plasmacoll.cross_sections.read_lxcat`,
             or the path of the downloaded file.
         background: The name of the argon background.
         target: The target name of the blocks to use (other gases and ion
@@ -270,8 +353,8 @@ def argon_electron_processes(
         electron: The electron species.
         ion: The ion species ionization creates.
         energy_sharing: Ionization energy sharing, see
-            :class:`~plasmacoll.process.CollisionProcess`.
-        sharing_energy: The ``w`` of ``"opal"`` sharing in eV.
+            `plasmacoll.process.CollisionProcess`.
+        sharing_energy: The ``w`` of ``"opal"`` sharing in eV (or a Quantity).
 
     Raises:
         KeyError: If the set has no momentum-transfer or no ionization block.

@@ -55,18 +55,30 @@ process's ``scattering`` model about the incident direction:
     move at the projectile's velocity, so momentum is conserved exactly when
     the incident mass is the product's plus the electrons'. The optional
     ``ion`` product, the ionized target, starts with the neutral's velocity.
-    :func:`~plasmacoll.charge_states.stripping_processes` builds these
-    processes from a :class:`~plasmacoll.charge_states.ChargeStateTransitions`,
+    `plasmacoll.charge_states.stripping_processes` builds these
+    processes from a `plasmacoll.charge_states.ChargeStateTransitions`,
     so that the markers and the fractions use the same cross sections.
+``beam_ionization``
+    A fast projectile ionizes the target, ``X + B -> X + B+ + e``, and keeps its
+    velocity (the energy it loses, the binding energy and the electron's, is
+    negligible against a beam's). The ``ion`` product, the ionized target,
+    starts with the neutral's velocity; the optional ``electron`` product is
+    emitted isotropically from the neutral with an energy from the
+    Opal-Peterson-Beaty distribution ``1 / (1 + (E_s / w)^2)`` of width
+    ``w = sharing_energy``, cut at the binary-encounter maximum
+    ``2 m_e g^2`` (four times the energy of an electron at the projectile's
+    speed). This is the gas ionization of a beam line, whose slow ions the
+    accelerator's field sends back (backstreaming); momentum is conserved up
+    to the electron's and the ion's recoil, negligible for a beam.
 
 Products take the position and weight of the incident marker, which conserves
 charge and particle number marker by marker, so markers may have any weights.
 A code with one fixed weight per species must give species that exchange
-particles the same weight; :mod:`plasmacoll.population` splits and merges
+particles the same weight; `plasmacoll.population` splits and merges
 markers to control their number.
 
 The targets are Maxwellian backgrounds. A background with a
-:class:`~plasmacoll.background.DynamicProfile` follows a density set before
+`plasmacoll.background.DynamicProfile` follows a density set before
 every step, e.g. that of a tracked plasma species on a grid, which makes that
 species a target in the test-particle sense: ``detachment`` of H- by the
 electrons (``e + H- -> H + 2e``), or mutual neutralization ``H+ + H- -> H + H``
@@ -87,6 +99,7 @@ from typing import Any, NamedTuple
 import cunumpy as xp
 import numpy as np
 import scope_profiler as sp
+from methodcard import Rule, method
 
 from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll._types import Array
@@ -94,6 +107,7 @@ from plasmacoll.background import NeutralBackground, is_dynamic
 from plasmacoll.constants import ELEMENTARY_CHARGE
 from plasmacoll.markers import MarkerSet
 from plasmacoll.process import CollisionProcess
+from plasmacoll.units import to_unit
 
 __all__ = [
     "MCCDiagnostics",
@@ -153,12 +167,19 @@ class MCCResult:
             charge transfer and their dissociative variants).
         created: New markers per product species, one batch per process.
         diagnostics: The collision counters.
+        consumed: The background particles removed by the collisions, per
+            background name: one batch per consuming process
+            (`plasmacoll.process.CollisionProcess.consumes_neutral`)
+            with the positions of the events, the velocities the neutrals had
+            and the weights (physical particles) taken from the gas. What a
+            depleting gas model subtracts from its density.
     """
 
     velocities: Array
     removed: Array
     created: dict[str, list[NewMarkers]]
     diagnostics: MCCDiagnostics
+    consumed: dict[str, list[NewMarkers]] = field(default_factory=dict)
 
 
 def make_rng(seed: int | None = None, rank: int = 0) -> Any:
@@ -202,6 +223,56 @@ def _isotropic_directions(rng: Any, num: int) -> Array:
     )
 
 
+def _scattering_cosine_rules() -> dict:
+    """The SymPy rules of `scattering_cosine` (for the tests)."""
+    import sympy
+
+    energy, uniform = sympy.symbols("energy uniform", positive=True)
+    scaled = 4 * energy / sympy.Float(_HARTREE_EV)
+    xi = scaled / (1 + scaled)
+
+    def model(name: str):
+        def call(uniform: float, energy: float = 1.0) -> float:
+            cosine = scattering_cosine(
+                name, xp.asarray([energy]), xp.asarray([uniform])
+            )
+            return float(xp.to_numpy(cosine)[0])
+
+        return call
+
+    ranges = {"energy": (0.1, 100.0), "uniform": (0.0, 1.0)}
+    return {
+        "isotropic": Rule(1 - 2 * uniform, model("isotropic"), ranges),
+        "vahedi_surendra": Rule(
+            (2 + energy - 2 * (1 + energy) ** uniform) / energy,
+            model("vahedi_surendra"),
+            ranges,
+        ),
+        "okhrimovskyy": Rule(
+            1 - 2 * uniform * (1 - xi) / (1 + xi * (1 - 2 * uniform)),
+            model("okhrimovskyy"),
+            ranges,
+        ),
+    }
+
+
+@method(
+    equations={
+        "isotropic": r"\cos\chi = 1 - 2R",
+        "vahedi_surendra": r"\cos\chi = \frac{2 + E - 2(1 + E)^R}{E}, \qquad E \text{ in eV}",
+        "okhrimovskyy": r"\cos\chi = 1 - \frac{2R(1 - \xi)}{1 + \xi(1 - 2R)}, \qquad \xi = \frac{4\epsilon}{1 + 4\epsilon}, \quad \epsilon = \frac{E}{27.211386\ \mathrm{eV}}",
+    },
+    assumptions=(
+        r"each the inverse of the model's cumulative distribution in $\cos\chi$, $R$ uniform in $[0, 1)$",
+        r"$E$ clipped at zero; Vahedi-Surendra isotropic below $10^{-6}$ eV; both anisotropic forms clipped to $[-1, 1]$",
+        r"the scattering angle about the incident direction $\hat{\mathbf g}$, at the pre-collision lookup energy; the azimuth uniform",
+    ),
+    references=(
+        "[Vahedi and Surendra, Comput. Phys. Commun. 87, 179 (1995)](https://doi.org/10.1016/0010-4655(94)00171-W)",
+        "[Okhrimovskyy, Bogaerts and Gijbels, Phys. Rev. E 65, 037402 (2002)](https://doi.org/10.1103/PhysRevE.65.037402)",
+    ),
+    symbolic=lambda: _scattering_cosine_rules(),
+)
 def scattering_cosine(model: str, energy: Array, uniform: Array) -> Array:
     """Return the cosine of the scattering angle for incident ``energy`` (eV).
 
@@ -268,7 +339,8 @@ class MonteCarloCollisions:
 
     Args:
         species_masses: The mass in kg of every species that collides or is
-            produced by a collision.
+            produced by a collision; an astropy Quantity (``40 * u.u``), a
+            string (``"40 u"``) or a number in kg.
         backgrounds: The neutral gases.
         processes: The processes of each incident species.
         seed: Seed of the random stream; from the operating system if None.
@@ -341,8 +413,6 @@ class MonteCarloCollisions:
         ``density_factor`` scales the reference densities (None: each
         background's largest). Returns host arrays ``(speeds, running_max)``.
         """
-        if not processes:
-            return np.zeros(1), np.zeros(1)
         cap = max(
             float(self._speed_of(species, p, p.cross_section.max_energy))
             for p in processes
@@ -364,29 +434,31 @@ class MonteCarloCollisions:
 
     @sp.profile("plasmacoll.tabulate_bounds", tags=PROFILE_TAGS)
     def _tabulate_bounds(self) -> None:
-        """Tabulate the collision-frequency bound of every species.
+        """Tabulate the collision-frequency bound of every species and background.
 
-        The processes on backgrounds with a fixed profile share one table at
-        their largest density. Each background with a
-        :class:`~plasmacoll.background.DynamicProfile` gets a table of its own
-        at the reference density, scaled by the profile's current
-        ``max_factor`` in :meth:`frequency_bound`, so the bound follows the
-        profile without being tabulated again.
+        Each background gets a table of its own, so that `collide` can
+        bound the processes on a slow gas and on a fast background (such as
+        electrons) at their own relative speeds. A background with a fixed
+        profile is tabulated at its largest density; one with a
+        `plasmacoll.background.DynamicProfile` at the reference
+        density, scaled by the profile's current ``max_factor`` in
+        `frequency_bound`, so the bound follows the profile without being
+        tabulated again.
         """
         self._frequency_tables = {}
         for species, processes in self._processes.items():
-            static = [p for p in processes if not self._is_dynamic(p.background)]
-            dynamic: dict[str, list[CollisionProcess]] = {}
+            groups: dict[str, list[CollisionProcess]] = {}
             for process in processes:
-                if self._is_dynamic(process.background):
-                    dynamic.setdefault(process.background, []).append(process)
-            self._frequency_tables[species] = (
-                (static, self._running_frequency_bound(species, static, None)),
-                {
-                    name: (group, self._running_frequency_bound(species, group, 1.0))
-                    for name, group in dynamic.items()
-                },
-            )
+                groups.setdefault(process.background, []).append(process)
+            self._frequency_tables[species] = {
+                name: (
+                    group,
+                    self._running_frequency_bound(
+                        species, group, 1.0 if self._is_dynamic(name) else None
+                    ),
+                )
+                for name, group in groups.items()
+            }
 
     def __init__(
         self,
@@ -401,7 +473,7 @@ class MonteCarloCollisions:
         max_collision_probability: float = 0.1,
     ) -> None:
         """Check the definitions and tabulate the collision-frequency bounds."""
-        self._masses = {name: float(mass) for name, mass in species_masses.items()}
+        self._masses = to_unit(dict(species_masses), "kg", "species_masses")
         self._backgrounds = {bg.name: bg for bg in backgrounds}
         self._processes = {name: tuple(procs) for name, procs in processes.items()}
         if len(self._backgrounds) != len(backgrounds):
@@ -416,6 +488,11 @@ class MonteCarloCollisions:
             if len(set(names)) != len(names):
                 raise ValueError(f"Process names of {species!r} are not unique")
             for process in procs:
+                if process.upper_state is not None:
+                    raise ValueError(
+                        f"Process {process.name!r} has an upper_state: superelastic "
+                        "collisions are only in plasmacoll.boltzmann.solve_eedf"
+                    )
                 if process.background not in self._backgrounds:
                     raise KeyError(
                         f"Process {process.name!r} uses unknown background "
@@ -450,6 +527,16 @@ class MonteCarloCollisions:
         self._backgrounds[background.name] = background
         self._tabulate_bounds()
 
+    @method(
+        equations={
+            "frequency": r"\nu_k(g, \mathbf x) = n_b f_b(\mathbf x)\,\sigma_k(E_k)\,g",
+            "lookup_energy": r"E_k = \frac{m_k g^2}{2e}, \qquad m_k = \begin{cases} \mu = \dfrac{mM}{m + M} & \text{center of mass} \\ m & \text{lab} \end{cases}",
+        },
+        assumptions=(
+            r"process $k$ on background $b$ of reference density $n_b$ and density profile $f_b$; $g$ the relative speed",
+            r"without a density factor the largest the background reaches, $F_b$ = `max_factor`: the bound the null-collision method needs",
+        ),
+    )
     def process_frequency(
         self,
         species: str,
@@ -483,37 +570,59 @@ class MonteCarloCollisions:
             total = total + self.process_frequency(species, process, relative_speed)
         return total
 
-    def frequency_bound(self, species: str, max_relative_speed: float) -> float:
+    @method(
+        equations={
+            "bound": r"\nu_{\max} = s \sum_b F_b \max_{g \le g_{\max,b}} \sum_{k \in b} n_b\,\sigma_k(E_k)\,g",
+            "table": r"\max_{g \le g_{\max,b}} \nu_b(g) \approx \max\Big(\max_{g_i \le g_{\max,b}} \nu_b(g_i),\ \nu_b(g_{\max,b})\Big)",
+        },
+        assumptions=(
+            r"$s$ = `bound_safety` (1.02) covers the maxima of a piecewise-linear $\sigma$ times $g$ between grid speeds; 1 is exact for piecewise-constant cross sections",
+            r"the running maximum is tabulated per species and background on 4096 (`num_bound_samples`) logarithmic speeds from $10^{-8}$ times the speed of the largest table energy, merged with the speeds of every table point and $g_\mathrm{th}(1 + 10^{-12})$ of every threshold",
+            r"beyond the table every $\sigma$ is constant and $\nu \propto g$, which the direct evaluation at $g_{\max,b}$ covers",
+            r"a sum of per-background bounds bounds the sum; a fixed profile is tabulated at its largest density, a `DynamicProfile` at the reference density and scaled by its current `max_factor` $F_b$",
+        ),
+        components=("plasmacoll.mcc.MonteCarloCollisions.process_frequency",),
+    )
+    def frequency_bound(
+        self, species: str, max_relative_speed: float | Mapping[str, float]
+    ) -> float:
         """Return ``nu_max`` (1/s) valid for relative speeds up to ``max_relative_speed``.
 
-        The bound is the larger of the running maximum of the tabulated
-        frequency over grid speeds up to ``max_relative_speed`` and the
-        frequency at ``max_relative_speed`` itself, raised by ``bound_safety``
-        for maxima between grid points. Beyond the last table point every
-        cross section is constant and the frequency grows linearly with speed,
-        which the direct evaluation at ``max_relative_speed`` covers.
-        """
-        if species not in self._frequency_tables:
-            return 0.0
-        speed = xp.asarray([float(max_relative_speed)])
+        The bound is the sum over backgrounds of the larger of the running
+        maximum of the tabulated frequency over grid speeds up to the largest
+        relative speed and the frequency at that speed itself, raised by
+        ``bound_safety`` for maxima between grid points. Beyond the last table
+        point every cross section is constant and the frequency grows linearly
+        with speed, which the direct evaluation covers.
 
-        def table_bound(processes, table, density_factor):
-            speeds, running_max = table
-            index = int(np.searchsorted(speeds, max_relative_speed, side="right")) - 1
+        Args:
+            species: The incident species.
+            max_relative_speed: The largest relative speed in m/s, one for all
+                backgrounds or one per background name.
+        """
+        tables = self._frequency_tables.get(species)
+        if not tables:
+            return 0.0
+        bound = 0.0
+        # A sum of bounds bounds the sum.
+        for name, (processes, (speeds, running_max)) in tables.items():
+            limit = float(
+                max_relative_speed[name]
+                if isinstance(max_relative_speed, Mapping)
+                else max_relative_speed
+            )
+            dynamic = self._is_dynamic(name)
+            factor = self._backgrounds[name].max_density_factor if dynamic else 1.0
+            if factor <= 0.0:
+                continue
+            index = int(np.searchsorted(speeds, limit, side="right")) - 1
             tabulated = float(running_max[index]) if index >= 0 else 0.0
             direct = float(
-                self._frequency_of(species, processes, speed, density_factor)[0]
+                self._frequency_of(
+                    species, processes, xp.asarray([limit]), 1.0 if dynamic else None
+                )[0]
             )
-            return max(tabulated, direct)
-
-        (static, table), dynamic = self._frequency_tables[species]
-        bound = table_bound(static, table, None) if static else 0.0
-        # A sum of bounds bounds the sum: each dynamic background at its
-        # current largest factor (the table holds the reference density).
-        for name, (processes, dynamic_table) in dynamic.items():
-            factor = self._backgrounds[name].max_density_factor
-            if factor > 0.0:
-                bound += factor * table_bound(processes, dynamic_table, 1.0)
+            bound += factor * max(tabulated, direct)
         return self._bound_safety * bound
 
     def _secondary_fraction(self, process: CollisionProcess, residual: Array) -> Array:
@@ -620,14 +729,24 @@ class MonteCarloCollisions:
         created: dict[str, list[NewMarkers]],
         relative: Array,
         speed: Array,
+        consumed: dict[str, list[NewMarkers]] | None = None,
     ) -> None:
         """Apply the kinematics of one process to the selected markers.
 
         ``relative`` (incident - neutral) and ``speed`` (its norm) are already
         known from candidate selection, so they are passed in rather than
-        recomputed.
+        recomputed. A process that consumes its neutral records the events in
+        ``consumed`` under the background's name.
         """
         num = int(marker_indices.shape[0])
+        if consumed is not None and process.consumes_neutral:
+            consumed.setdefault(process.background, []).append(
+                NewMarkers(
+                    xp.array(positions[marker_indices], copy=True),
+                    xp.array(neutral_velocities, copy=True),
+                    xp.array(weights[marker_indices], copy=True),
+                )
+            )
         mass = self._masses[species]
         neutral_mass = self._backgrounds[process.background].mass
         total_mass = mass + neutral_mass
@@ -709,6 +828,19 @@ class MonteCarloCollisions:
             removed[marker_indices] = True
             add_optional("ion", neutral_velocities)
             add_optional("neutral", velocity)
+        elif kind == "beam_ionization":
+            add_product("ion", xp.array(neutral_velocities, copy=True))
+            if "electron" in process.products:
+                electron_mass = self._masses[process.products["electron"]]
+                width = float(process.sharing_energy or 0.0) * ELEMENTARY_CHARGE
+                most = 2.0 * electron_mass * speed**2
+                energy = width * xp.tan(self._rng.random(num) * xp.arctan(most / width))
+                add_product(
+                    "electron",
+                    neutral_velocities
+                    + xp.sqrt(2.0 * energy / electron_mass)[:, None]
+                    * _isotropic_directions(self._rng, num),
+                )
         elif kind == "stripping":
             removed[marker_indices] = True
             add_product("projectile", xp.array(velocity, copy=True))
@@ -765,84 +897,27 @@ class MonteCarloCollisions:
             candidate_mask &= xp.asarray(alive, dtype=bool)
         return xp.where(candidate_mask)[0]
 
-    @sp.profile("plasmacoll.collide", tags=PROFILE_TAGS)
-    def collide(
+    def _collide_candidates(
         self,
         species: str,
         positions: Array,
         velocities: Array,
         weights: Array,
-        dt: float,
-        alive: Array | None = None,
-        in_place: bool = False,
-    ) -> MCCResult:
-        """Collide one species' markers for one time step ``dt`` (s).
+        candidates: Array,
+        nu_max: float | None,
+        removed: Array,
+        created: dict[str, list[NewMarkers]],
+        diagnostics: MCCDiagnostics,
+        consumed: dict[str, list[NewMarkers]] | None = None,
+    ) -> None:
+        """Collide the ``candidates`` with a real or the null process.
 
-        Args:
-            species: The incident species.
-            positions: Marker positions, shape ``(N, ndim)``; read by density
-                profiles and copied to products.
-            velocities: Marker velocities in m/s, shape ``(N, 3)``.
-            weights: Physical particles per marker, shape ``(N,)``; copied to
-                products.
-            dt: The time step in s.
-            alive: Only rows flagged here can collide (all rows if None).
-            in_place: Update the collided rows of ``velocities`` directly,
-                which avoids copying the marker storage; otherwise the result
-                holds a new array.
-
-        Returns:
-            The new velocities, the removed markers, the created markers per
-            product species and the collision counters.
-
-        Raises:
-            ValueError: If ``velocities`` does not have three components.
+        The process is drawn against ``nu_max``, so a candidate whose real
+        frequency is lower may draw the null collision; with ``nu_max=None``
+        every candidate collides with a real process.
         """
-        if not in_place:
-            velocities = xp.array(velocities, dtype=float, copy=True)
-        num_markers = int(velocities.shape[0])
-        removed = xp.zeros(num_markers, dtype=bool)
-        created: dict[str, list[NewMarkers]] = {}
-        diagnostics = MCCDiagnostics()
-        processes = self._processes.get(species, ())
-        if num_markers == 0 or dt <= 0.0 or not processes:
-            return MCCResult(velocities, removed, created, diagnostics)
-        if velocities.ndim != 2 or velocities.shape[1] != 3:
-            raise ValueError(
-                "Monte Carlo collisions need three velocity components per marker, "
-                f"got shape {tuple(velocities.shape)}"
-            )
-
-        # Dead rows only raise the bound, which keeps it valid.
-        max_speed = float(np.sqrt(_max_squared_speed(velocities)))
-        # The fastest neutral partner: flow plus eight thermal speeds.
-        max_neutral_speed = max(
-            self._backgrounds[p.background].drift_speed
-            + 8.0 * self._backgrounds[p.background].max_thermal_speed
-            for p in processes
-        )
-        nu_max = self.frequency_bound(species, max_speed + max_neutral_speed)
-        if nu_max <= 0.0:
-            return MCCResult(velocities, removed, created, diagnostics)
-
-        probability = 1.0 - float(np.exp(-nu_max * dt))
-        diagnostics.collision_probability = probability
-        if probability > self._max_probability and not self._warned_probability:
-            warnings.warn(
-                f"{species} collision probability per step {probability:.3g} exceeds "
-                f"{self._max_probability:.3g} (nu_max dt = {nu_max * dt:.3g}); markers "
-                "collide at most once per step, so collisions are lost. Reduce dt.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            self._warned_probability = True
-        candidates = self._select_candidates(num_markers, probability, alive)
+        processes = self._processes[species]
         num_candidates = int(candidates.shape[0])
-        diagnostics.candidates = num_candidates
-        if num_candidates == 0:
-            return MCCResult(velocities, removed, created, diagnostics)
-        candidates = xp.asarray(candidates)
-
         incident = velocities[candidates]
 
         # One relative velocity and speed per process, batched into a single
@@ -874,17 +949,28 @@ class MonteCarloCollisions:
         relative_stack = incident[None, :, :] - neutral_stack[process_background]
         speed_stack = xp.sqrt(xp.sum(relative_stack**2, axis=-1))
 
-        cumulative = xp.zeros(num_candidates)
-        selection = self._rng.random(num_candidates) * nu_max
-        chosen = xp.full(num_candidates, -1, dtype=int)
-        for index, process in enumerate(processes):
-            cumulative = cumulative + self.process_frequency(
+        frequencies = [
+            self.process_frequency(
                 species,
                 process,
                 speed_stack[index],
                 density_factors[process_background[index]],
             )
+            for index, process in enumerate(processes)
+        ]
+        # Without a bound every candidate collides: the process is drawn in
+        # proportion to its frequency where the marker is.
+        scale = sum(frequencies) if nu_max is None else nu_max
+        cumulative = xp.zeros(num_candidates)
+        selection = self._rng.random(num_candidates) * scale
+        chosen = xp.full(num_candidates, -1, dtype=int)
+        for index, frequency in enumerate(frequencies):
+            cumulative = cumulative + frequency
             chosen = xp.where((chosen < 0) & (selection < cumulative), index, chosen)
+        if nu_max is None:
+            # Rounding can leave a draw just above the sum: the last process.
+            chosen = xp.where(chosen < 0, len(processes) - 1, chosen)
+            nu_max = xp.inf
         violations = int(xp.count_nonzero(cumulative > nu_max * (1.0 + 1e-9)))
         diagnostics.bound_violations = violations
         if violations and not self._warned_bound:
@@ -915,8 +1001,128 @@ class MonteCarloCollisions:
                     created=created,
                     relative=relative_stack[index][local],
                     speed=speed_stack[index][local],
+                    consumed=consumed,
                 )
-        return MCCResult(velocities, removed, created, diagnostics)
+
+    @method(
+        equations={
+            "max_speed": r"g_{\max,b} = v_{\max} + |\mathbf u_b| + 8\sqrt{\frac{e\,T_b F_{T,b}}{M_b}}, \qquad v_{\max} = \max_i |\mathbf v_i|",
+            "probability": r"P = 1 - e^{-\nu_{\max}\Delta t}",
+            "selection": r"\sum_{j<k}\nu_j \le R\,\nu_{\max} < \sum_{j\le k}\nu_j \ \Rightarrow\ \text{process } k, \qquad R\,\nu_{\max} \ge \sum_j \nu_j \ \Rightarrow\ \text{null collision}",
+            "rate": r"P\,\frac{\nu_k}{\nu_{\max}} = \nu_k\Delta t + O\big((\nu_{\max}\Delta t)^2\big)",
+        },
+        assumptions=(
+            r"at most one collision per marker and step, so $\nu_{\max}\Delta t \ll 1$; warns once when $P$ exceeds `max_collision_probability` (0.1)",
+            r"with a NumPy generator the candidates are a binomial$(N, P)$ count and a uniform subset; other generators draw one number per marker",
+            r"each candidate draws one neutral velocity $\mathbf w$ per background and $R$ uniform in $[0, 1)$; the real frequencies use the density factor where the marker is (exact thinning)",
+            r"candidates whose total frequency exceeds $\nu_{\max}(1 + 10^{-9})$ are counted in `bound_violations` and warned about once: their rate is too low",
+            r"$F_{T,b}$ the largest temperature factor; eight thermal speeds leave about $10^{-15}$ per component for a faster neutral",
+        ),
+        references=(
+            "[Vahedi and Surendra, Comput. Phys. Commun. 87, 179 (1995)](https://doi.org/10.1016/0010-4655(94)00171-W)",
+            "Skullerud, J. Phys. D 1, 1567 (1968)",
+        ),
+        components=(
+            "plasmacoll.mcc.MonteCarloCollisions.frequency_bound",
+            "plasmacoll.mcc.MonteCarloCollisions.process_frequency",
+            "plasmacoll.background.NeutralBackground.sample_velocities",
+            "plasmacoll.process.CollisionProcess",
+        ),
+    )
+    @sp.profile("plasmacoll.collide", tags=PROFILE_TAGS)
+    def collide(
+        self,
+        species: str,
+        positions: Array,
+        velocities: Array,
+        weights: Array,
+        dt: float,
+        alive: Array | None = None,
+        in_place: bool = False,
+    ) -> MCCResult:
+        """Collide one species' markers for one time step ``dt`` (s).
+
+        Args:
+            species: The incident species.
+            positions: Marker positions, shape ``(N, ndim)``; read by density
+                profiles and copied to products.
+            velocities: Marker velocities in m/s, shape ``(N, 3)``.
+            weights: Physical particles per marker, shape ``(N,)``; copied to
+                products.
+            dt: The time step in s.
+            alive: Only rows flagged here can collide (all rows if None).
+            in_place: Update the collided rows of ``velocities`` directly,
+                which avoids copying the marker storage; otherwise the result
+                holds a new array.
+
+        Returns:
+            The new velocities, the removed markers, the created markers per
+            product species, the collision counters and the neutrals consumed
+            per background.
+
+        Raises:
+            ValueError: If ``velocities`` does not have three components.
+        """
+        if not in_place:
+            velocities = xp.array(velocities, dtype=float, copy=True)
+        num_markers = int(velocities.shape[0])
+        removed = xp.zeros(num_markers, dtype=bool)
+        created: dict[str, list[NewMarkers]] = {}
+        consumed: dict[str, list[NewMarkers]] = {}
+        diagnostics = MCCDiagnostics()
+        processes = self._processes.get(species, ())
+        if num_markers == 0 or dt <= 0.0 or not processes:
+            return MCCResult(velocities, removed, created, diagnostics)
+        if velocities.ndim != 2 or velocities.shape[1] != 3:
+            raise ValueError(
+                "Monte Carlo collisions need three velocity components per marker, "
+                f"got shape {tuple(velocities.shape)}"
+            )
+
+        # Dead rows only raise the bound, which keeps it valid.
+        max_speed = float(np.sqrt(_max_squared_speed(velocities)))
+        # The fastest partner of each background: flow plus eight thermal speeds.
+        max_relative_speeds = {
+            name: max_speed
+            + background.drift_speed
+            + 8.0 * background.max_thermal_speed
+            for name, background in self._backgrounds.items()
+        }
+        nu_max = self.frequency_bound(species, max_relative_speeds)
+        if nu_max <= 0.0:
+            return MCCResult(velocities, removed, created, diagnostics)
+
+        probability = 1.0 - float(np.exp(-nu_max * dt))
+        diagnostics.collision_probability = probability
+        if probability > self._max_probability and not self._warned_probability:
+            warnings.warn(
+                f"{species} collision probability per step {probability:.3g} exceeds "
+                f"{self._max_probability:.3g} (nu_max dt = {nu_max * dt:.3g}); markers "
+                "collide at most once per step, so collisions are lost. Reduce dt.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            self._warned_probability = True
+        candidates = self._select_candidates(num_markers, probability, alive)
+        num_candidates = int(candidates.shape[0])
+        diagnostics.candidates = num_candidates
+        if num_candidates == 0:
+            return MCCResult(velocities, removed, created, diagnostics)
+        candidates = xp.asarray(candidates)
+
+        self._collide_candidates(
+            species,
+            positions,
+            velocities,
+            weights,
+            candidates,
+            nu_max,
+            removed,
+            created,
+            diagnostics,
+            consumed,
+        )
+        return MCCResult(velocities, removed, created, diagnostics, consumed)
 
     @sp.profile("plasmacoll.collide_species", tags=PROFILE_TAGS)
     def collide_species(
@@ -924,6 +1130,7 @@ class MonteCarloCollisions:
         species: Mapping[str, MarkerSet],
         dt: float | Mapping[str, float],
         incident: Iterable[str] | None = None,
+        consumed: dict[str, list[NewMarkers]] | None = None,
     ) -> dict[str, MCCDiagnostics]:
         """Collide every species in ``species`` for one time step ``dt`` (s), in place.
 
@@ -934,12 +1141,15 @@ class MonteCarloCollisions:
 
         Args:
             species: Marker sets by species name, e.g.
-                :class:`~plasmacoll.markers.ParticleArrays`. Species without
+                `plasmacoll.markers.ParticleArrays`. Species without
                 processes are only receivers of products.
             dt: The time step in s, or one per incident species (e.g. the
                 cycle of a species pushed only every few steps).
             incident: The species that collide now (all with processes if
                 None); the others in ``species`` only receive products.
+            consumed: If given, the neutrals the collisions consumed are
+                appended to it per background name (see
+                `MCCResult.consumed`), for a gas model that depletes.
 
         Returns:
             The collision counters of every species that collided.
@@ -967,6 +1177,9 @@ class MonteCarloCollisions:
                 markers.remove(result.removed)
             for product, batches in result.created.items():
                 pending.setdefault(product, []).extend(batches)
+            if consumed is not None:
+                for background, batches in result.consumed.items():
+                    consumed.setdefault(background, []).extend(batches)
             diagnostics[name] = result.diagnostics
 
         for product, batches in pending.items():
@@ -978,6 +1191,108 @@ class MonteCarloCollisions:
                 weights=xp.concatenate([batch.weights for batch in batches]),
             )
         return diagnostics
+
+    @method(
+        equations={
+            "attenuation": r"\frac{1}{\lambda} = \sum_k n_k(\mathbf x)\,\sigma_k(E_k), \qquad E_k = \frac{m_k v^2}{2e}",
+        },
+        assumptions=(
+            r"targets at rest: $g = |\mathbf v|$, their temperature and drift ignored, for markers much faster than the neutrals",
+        ),
+        components=("plasmacoll.mcc.MonteCarloCollisions.process_frequency",),
+    )
+    def attenuation(self, species: str, positions: Array, velocities: Array) -> Array:
+        """Return ``sum_k n_k(x) sigma_k(E)`` (1/m), the inverse mean free path.
+
+        For fast markers, such as a beam, whose speed is far above the
+        neutrals': the targets are taken at rest. ``positions`` is ``(N, ndim)``
+        and ``velocities`` ``(N, 3)``; the free path of a marker flying straight
+        follows from integrating this along its path.
+        """
+        velocities = xp.asarray(velocities, dtype=float)
+        speed = xp.sqrt(xp.sum(velocities**2, axis=-1))
+        total = xp.zeros(velocities.shape[0])
+        safe = xp.where(speed > 0.0, speed, 1.0)
+        for process in self._processes.get(species, ()):
+            factor = self._backgrounds[process.background].density_factor(positions)
+            total = total + self.process_frequency(species, process, speed, factor)
+        return xp.where(speed > 0.0, total / safe, 0.0)
+
+    @method(
+        equations={
+            "choice": r"P(k) = \frac{\nu_k(g, \mathbf x)}{\sum_j \nu_j(g, \mathbf x)}",
+        },
+        assumptions=(
+            r"every given marker collides with a real process (no null collision); a draw that rounding leaves above the sum goes to the last process",
+            r"for event-driven transport: the free path is sampled from `attenuation` outside; raises where the attenuation is zero",
+        ),
+        components=(
+            "plasmacoll.mcc.MonteCarloCollisions.attenuation",
+            "plasmacoll.process.CollisionProcess",
+        ),
+    )
+    @sp.profile("plasmacoll.collide_now", tags=PROFILE_TAGS)
+    def collide_now(
+        self,
+        species: str,
+        positions: Array,
+        velocities: Array,
+        weights: Array,
+        indices: Array | None = None,
+        in_place: bool = False,
+    ) -> MCCResult:
+        """Collide the markers ``indices`` (all if None) now, each with a real process.
+
+        For event-driven transport, where a marker is moved to the point of its
+        next collision (a free path sampled from `attenuation`) and then
+        collides for certain. The process is drawn in proportion to its
+        frequency at the marker's position; the kinematics are those of
+        `collide`.
+
+        Raises:
+            ValueError: If ``velocities`` does not have three components, or a
+                selected marker has no process with a nonzero frequency.
+        """
+        if not in_place:
+            velocities = xp.array(velocities, dtype=float, copy=True)
+        num_markers = int(velocities.shape[0])
+        removed = xp.zeros(num_markers, dtype=bool)
+        created: dict[str, list[NewMarkers]] = {}
+        consumed: dict[str, list[NewMarkers]] = {}
+        diagnostics = MCCDiagnostics()
+        candidates = (
+            xp.arange(num_markers)
+            if indices is None
+            else xp.asarray(indices, dtype=int)
+        )
+        if candidates.shape[0] == 0 or not self._processes.get(species):
+            return MCCResult(velocities, removed, created, diagnostics)
+        if velocities.ndim != 2 or velocities.shape[1] != 3:
+            raise ValueError(
+                "Monte Carlo collisions need three velocity components per marker, "
+                f"got shape {tuple(velocities.shape)}"
+            )
+        if bool(
+            xp.any(
+                self.attenuation(species, positions[candidates], velocities[candidates])
+                <= 0.0
+            )
+        ):
+            raise ValueError(f"a {species} marker has no collision where it is")
+        diagnostics.candidates = int(candidates.shape[0])
+        self._collide_candidates(
+            species,
+            positions,
+            velocities,
+            weights,
+            candidates,
+            None,
+            removed,
+            created,
+            diagnostics,
+            consumed,
+        )
+        return MCCResult(velocities, removed, created, diagnostics, consumed)
 
     @property
     def processes(self) -> dict[str, tuple[CollisionProcess, ...]]:

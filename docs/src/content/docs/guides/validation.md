@@ -36,8 +36,8 @@ same reactor diagnostics (`mean_velocity`, `mean_energy_ev` and the collision co
 ## The two-term Boltzmann solver
 
 `solve_eedf` is checked against closed forms, against published two-term results for model
-gases and, where it is installed, against [BOLOS](https://github.com/aluque/bolos), an
-independent implementation of the same method:
+gases, against [LoKI-B](https://github.com/LoKI-Suite/LoKI-B-cpp) and, where it is installed,
+against [BOLOS](https://github.com/aluque/bolos), two independent implementations of the method:
 
 | Test                                          | Expectation                                                                   | Agreement   |
 | --------------------------------------------- | ----------------------------------------------------------------------------- | ----------- |
@@ -47,6 +47,9 @@ independent implementation of the same method:
 | Reid ramp, 1–40 Td                            | mean energy, drift velocity and $DN$ of Reid (1979) and Flynn et al. (2024)   | 0.1 %       |
 | Lucas–Saelee ionization gas, 30 Td            | the same and $k_{iz}$, Flynn et al. (2024), two-term                          | 0.2 %       |
 | synthetic gas with every process, 30–300 Td   | mean energy, $\mu N$, $DN$ and the rates of BOLOS                             | 0.2 %       |
+| argon-like gas, 100–1000 Td, 12 cases         | LoKI-B: temporal and spatial growth, equal and Opal–Peterson–Beaty sharing    | 0.01–0.1 %  |
+| H2-like gas with levels, 1–100 Td             | LoKI-B: rotational and vibrational levels, superelastic collisions            | 0.01–0.03 % |
+| levels at the gas temperature, no field       | Maxwellian at $kT$; $x_l k = x_u k^\mathrm{sup}$ for every level pair         | $10^{-6}$   |
 | electron number                               | every column of the converged operator sums to zero                           | $10^{-9}$   |
 | energy                                        | power from the field equals the collisional losses, second order in the cell  | $10^{-4}$   |
 
@@ -56,9 +59,31 @@ $10(\varepsilon - 0.2)\,\text{Å}^2/\mathrm{eV}$, with $M = 4$ u in a cold gas
 $\sigma_m = 4\varepsilon^{-1/2}\,\text{Å}^2$ and an ionization of
 $0.1(\varepsilon - 15.6)\,\text{Å}^2/\mathrm{eV}$ with $m_e/M = 10^{-3}$, as restated by Flynn
 et al., J. Phys. D 57, 255204 (2024). At 1000 Td BOLOS on the same grid differs by 1 %, and
-converges to the result of `solve_eedf` as its grid is refined. The
-[tutorial](/plasmacoll/tutorials/07-two-term-boltzmann/) prints the Reid comparison.
+converges to the result of `solve_eedf` as its grid is refined.
+
+The LoKI-B reference was computed with LoKI-B++ (the C++ version of the LisbOn KInetics
+Boltzmann solver, Tejero-del-Caz et al., Plasma Sources Sci. Technol. 28, 043001 (2019); version
+1.0, commit `add5518`) on synthetic cross sections, since LXCat's data may not be redistributed:
+
+- an argon-like gas (elastic, an excitation at 11.5 eV, ionization at 15.75 eV, attachment
+  around 6 eV) at 100, 300 and 1000 Td, with LoKI-B's temporal and spatial growth models and its
+  `equalSharing` and `usingSDCS` (Opal–Peterson–Beaty, $w = 10$ eV) ionization operators;
+- an H2-like gas at 300 K: rotational levels $J = 0$–9 of $v = 0$ with H2's rotational constant
+  ($2^{-7}$ eV) and nuclear-spin weights, Gerjuoy–Stein $J \to J + 2$ excitations, a vibrational
+  excitation $v = 0 \to 1$ (0.5 eV) with $v = 1$ populated at 2000 K, an electronic excitation
+  and ionization, at 1, 10, 30 and 100 Td. Every rotational and the vibrational excitation is
+  reversible; the superelastic collisions raise the mean energy at 1 Td by 40 %.
+
+LoKI-B is first order in its energy step, and its results on 4096 and 2048 cells differ by
+$10^{-5}$ to $10^{-3}$. On LoKI-B's grid with 1000 cells, `solve_eedf` agrees with it to within
+twice that difference (and with LoKI-B extrapolated to a zero step to about $10^{-4}$), for the
+mean energy, $\mu N$, $DN$, the effective Townsend coefficient of spatial growth, the net
+ionization of temporal growth, and every inelastic and superelastic rate above
+$10^{-25}\,\mathrm{m^3/s}$; the distributions agree to 0.5 % over six decades. On its default
+grid (200 cells) it is within 0.2 %, 0.6 % at 1000 Td. LoKI-B's Townsend coefficient is
+$k_{iz}/w$ in temporal growth, so the comparison there is of the net ionization rate. The
+[example](/plasmacoll/examples/07-two-term-boltzmann/) prints the Reid comparison.
 
 The whole suite runs on NumPy and on cunumpy's stand-in for CuPy in CI, and the combined
-coverage of the two runs is 100 %. The [tutorials](/plasmacoll/tutorials/) plot several of these
+coverage of the two runs is 100 %. The [examples](/plasmacoll/examples/) plot several of these
 comparisons.

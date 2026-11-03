@@ -23,27 +23,39 @@ key                                   reaction                                  
 ``mutual_neutralization``             H+ + H- -> H(n=2, 3) + H                   eq. (63), table 10
 ``hminus_h_associative_detachment``   H- + H -> H2 + e                           eq. (71), table 11
 ``hminus_h_detachment``               H- + H -> 2H + e                           eq. (71), table 11
+``proton_h2_charge_exchange``         H+ + H2(v=0) -> H + H2+                    eqs. (144), (145),
+                                                                                 table 31
+``hminus_h2_detachment``              H- + H2(v=0) -> H + H2 + e                 eq. (159)
 ====================================  =========================================  ===================
 
 Energies are in eV and cross sections in m^2 (the report's are in cm^2).
 Electron collisions with H2 are fitted against the electron's energy with the
 molecule at rest (``energy_frame="lab"``), the collisions of H- against the
 centre-of-mass energy (``energy_frame="center_of_mass"``; for e + H- the two
-agree to O(m_e/M)). The report gives the H- polynomial fits (eqs. (63), (71))
+agree to O(m_e/M)), the collisions of fast H+ and H- with H2 against the
+projectile's energy with the molecule at rest (``"lab"``). The report gives the H- polynomial fits (eqs. (63), (71))
 against E_CM and as valid from 0.1 eV to 20 keV; the same coefficients are in
 HYDHEL (from Janev, Langer, Evans and Post 1987) with the mass of 1 u on their
 energy scale, i.e. against E = m_p g^2 / 2 = 2 E_CM. This module follows the
 2003 report, so their energy is E_CM.
 
-Each fit's :meth:`HydrogenFit.cross_section` tabulates it for the collision
+Each fit's `HydrogenFit.cross_section` tabulates it for the collision
 operator: beyond the fit's range of validity the end values hold. Elastic
 collisions are outside the report's scope (its section 1), so the elastic
 momentum-transfer cross sections of e + H2 and e + H are not here.
 
+The two fast-projectile fits reach the beam energies of a neutral beam
+injector: eq. (159) is fitted to measurements from the threshold to the MeV
+region; eqs. (144), (145) to about 200 keV, beyond which the fit's own power-law
+tail is kept (not the end value), an extrapolation. The report states the
+energy of eq. (159) in keV, but its magnitudes (the maximum of 1e-15 cm^2 at 2
+to 8 keV, its Figure 34) and its threshold of 2.18 eV hold with the energy in
+eV, which this module uses.
+
 The electron excitation of H2 starts from H2(X, v=0), as the report's fits do.
 The dissociative attachment depends strongly on the vibrational level:
-:func:`dissociative_attachment` weights the levels with a
-:class:`~plasmacoll.vibrational.VibrationalDistribution`.
+`dissociative_attachment` weights the levels with a
+`plasmacoll.vibrational.VibrationalDistribution`.
 """
 
 from __future__ import annotations
@@ -53,9 +65,11 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
+from methodcard import Rule, method
 
 from plasmacoll._types import Array
 from plasmacoll.cross_sections import CrossSection
+from plasmacoll.units import to_unit
 from plasmacoll.vibrational import VibrationalDistribution
 
 __all__ = [
@@ -107,19 +121,160 @@ DISSOCIATIVE_ATTACHMENT_LEVELS: tuple[tuple[float, float], ...] = (
 )
 #: The decay energy E_0 [eV] of eq. (124).
 DISSOCIATIVE_ATTACHMENT_E0 = 0.45
+#: Table 11: the coefficients a_0..a_8 of eq. (71) for H- + H -> H + H + e
+#: (``"detachment"``) and H- + H -> H2 + e (``"associative_detachment"``).
+HMINUS_H_COEFFICIENTS: dict[str, tuple[float, ...]] = {
+    "detachment": (
+        -3.61799082e1,
+        1.16615172,
+        -1.41928602e-1,
+        -1.11195959e-2,
+        -1.72505995e-3,
+        1.59040356e-3,
+        -2.53196144e-4,
+        1.66978235e-5,
+        -4.09725797e-7,
+    ),
+    "associative_detachment": (
+        -3.44152907e1,
+        -3.39348209e-1,
+        5.66591705e-2,
+        -9.05150459e-3,
+        7.66060418e-4,
+        -4.27126462e-5,
+        -1.57273749e-7,
+        2.57607677e-7,
+        -1.20071919e-8,
+    ),
+}
 
 
+def _hydrogen_fit_rules() -> dict:
+    """The SymPy rules of the fits of `JANEV_FITS`, one per form (for the tests)."""
+    import sympy
+
+    e = sympy.symbols("energy", positive=True)
+    f = sympy.Float
+    a2 = f(1.0e-20)
+
+    def x_over(delta):
+        return e / f(delta)
+
+    def rule(key: str, expr, low: float, high: float) -> Rule:
+        return Rule(
+            expr,
+            implementation=lambda energy: JANEV_FITS[key](energy),
+            ranges={"energy": (low, high)},
+        )
+
+    x = x_over(0.516)
+    vibrational = (
+        a2 * f(5.78) / f(0.516) ** 4 / x**2 * (1 - 1 / x) ** (6.11 / f(0.516) ** 0.5)
+    )
+    x = x_over(12.754)
+    bracket = f(3.651e-2) - f(0.8405) / x + f(1.2365) / x**2 + f(2.5236) * sympy.log(x)
+    singlet_u = a2 * f(5.984) / (f(12.754) * x) * (1 - 1 / x) ** f(0.550) * bracket
+    x = x_over(13.13)
+    singlet_g = a2 * f(5.984) * f(0.8322) / (f(13.13) * x) * (1 - 1 / x) ** f(2.71)
+    x = x_over(7.93)
+    triplet = a2 * f(11.16) / x**3 * (1 - x ** f(-2.33)) ** f(3.78)
+    x = x_over(15.42)
+    ionization = (
+        a2 * f(1.828) / x * (1 - x ** f(-0.92)) ** f(2.19) * sympy.log(f(2.05) * e)
+    )
+    xg, xu = x_over(18.15), x_over(30.6)
+    dissociative = a2 * (
+        f(0.02905) / xg ** f(1.25) * (1 - xg ** f(-2.78)) ** f(1.886)
+        + f(0.5927) / xu ** f(1.20) * (1 - xu ** f(-1.22)) ** f(3.375)
+    )
+    detachment = (
+        f(1.0e-17)
+        * f(2.06)
+        / e
+        * sympy.log(sympy.E + f(2.335e-4) * e)
+        * sympy.exp(-f(13.75) / e ** f(0.868))
+        * (1 - (f(0.754) / e) ** 2)
+    )
+    log_e = sympy.log(e)
+    polynomial = f(1.0e-4) * sympy.exp(
+        sum(f(a) * log_e**j for j, a in enumerate(HMINUS_H_COEFFICIENTS["detachment"]))
+    )
+    low = f(18.60) * e ** f(-1.66) * (1 - (f(2.67) / e) ** f(2.53)) ** f(1.93)
+    high = (
+        f(17.3)
+        * sympy.exp(-f(105.0) / e**2)
+        / (
+            f(1.0e4) * e ** f(-1.12)
+            + f(3.64e-4) * e ** f(0.90)
+            + f(5.03e-19) * e ** f(4.00)
+            + f(5.87e-28) * e ** f(5.50)
+        )
+    )
+    capture = a2 * (low + high)
+    stripping = a2 * (
+        f(81.10)
+        / (e ** f(0.63) * (1 + f(2.03e-6) * e ** f(1.95)))
+        * (1 - sympy.exp(-f(0.057) * (e / f(2.18) - 1) ** f(0.94)))
+        + f(1.22e3)
+        / (e ** f(0.5) * (1 + f(6.91e-4) * e ** f(0.40)))
+        * sympy.exp(-f(125.0) / e ** f(0.663))
+    )
+    return {
+        "vibrational": rule("e_h2_vibrational_1", vibrational, 1.0, 100.0),
+        "singlet_u": rule("e_h2_singlet_B", singlet_u, 20.0, 1.0e3),
+        "singlet_g": rule("e_h2_singlet_EF", singlet_g, 20.0, 1.0e3),
+        "triplet": rule("e_h2_triplet_b", triplet, 10.0, 1.0e3),
+        "ionization": rule("e_h2_ionization", ionization, 20.0, 1.0e3),
+        "dissociative_ionization": rule(
+            "e_h2_dissociative_ionization", dissociative, 40.0, 1.0e3
+        ),
+        "hminus_detachment": rule("e_hminus_detachment", detachment, 2.0, 1.0e3),
+        "log_polynomial": rule("hminus_h_detachment", polynomial, 0.2, 1.0e4),
+        "proton_h2_charge_exchange": rule(
+            "proton_h2_charge_exchange", capture, 5.0, 1.0e5
+        ),
+        "hminus_h2_detachment": rule("hminus_h2_detachment", stripping, 5.0, 1.0e5),
+    }
+
+
+@method(
+    equations={
+        "evaluation": r"\sigma(E) = \begin{cases} 0 & E \le E_\mathrm{th} \\ \sigma_\mathrm{fit}\big(\min(\max(E, E_\mathrm{from}), E_\mathrm{to})\big) & E > E_\mathrm{th} \end{cases}, \qquad x = \frac{E}{\Delta E}",
+        "vibrational": r"\sigma = \frac{5.78\,\xi}{\Delta E^4}\,\frac{1}{x^2}\Big(1 - \frac1x\Big)^{6.11/\sqrt{\Delta E}} \quad [10^{-16}\,\mathrm{cm}^2], \qquad \text{eq. (74)}",
+        "singlet_u": r"\sigma = \frac{5.984}{\Delta E\,x}\Big(1 - \frac1x\Big)^\alpha \Big[A_0 + \frac{A_1}{x} + \frac{A_2}{x^2} + A_3\ln x\Big], \qquad \text{eq. (80), table 15}",
+        "singlet_g": r"\sigma = \frac{5.984\,A_1}{\Delta E\,x}\Big(1 - \frac1x\Big)^\alpha, \qquad \text{eq. (81), table 16}",
+        "triplet": r"\sigma = \frac{A}{x^3}\big(1 - x^{-\beta}\big)^\gamma, \qquad \text{eq. (95), table 22}",
+        "ionization": r"\sigma = \frac{1.828}{x}\big(1 - x^{-0.92}\big)^{2.19}\ln(2.05\,\Delta E\,x), \qquad \Delta E = 15.42\ \mathrm{eV}, \qquad \text{eq. (106)}",
+        "dissociative_ionization": r"\sigma = \frac{0.02905}{x_g^{1.25}}\big(1 - x_g^{-2.78}\big)^{1.886} + \frac{0.5927}{x_u^{1.20}}\big(1 - x_u^{-1.22}\big)^{3.375}, \qquad x_g = \frac{E}{18.15\ \mathrm{eV}}, \ x_u = \frac{E}{30.6\ \mathrm{eV}}, \qquad \text{eqs. (107a), (107b)}",
+        "hminus_detachment": r"\sigma = \frac{2.06}{E}\ln(e + 2.335\cdot10^{-4}E)\,e^{-13.75/E^{0.868}}\Big(1 - \Big(\frac{0.754}{E}\Big)^2\Big) \quad [10^{-13}\,\mathrm{cm}^2], \qquad \text{eq. (58)}",
+        "log_polynomial": r"\ln\sigma[\mathrm{cm}^2] = \sum_{j=0}^{8} a_j (\ln E)^j, \qquad \text{eqs. (63), (71), tables 10, 11}",
+        "proton_h2_charge_exchange": r"\sigma = a_1 E^{a_2}\Big(1 - \Big(\frac{E_0}{E}\Big)^{a_3}\Big)^{a_4} e^{-a_5 E^{a_6}} + \frac{b_1 e^{-b_2/E^{b_3}}}{b_4 E^{b_5} + b_6 E^{b_7} + b_8 E^{b_9} + b_{10} E^{b_{11}}}, \qquad \text{eqs. (144), (145), table 31}",
+        "hminus_h2_detachment": r"\sigma = \frac{81.10}{E^{0.63}(1 + 2.03\cdot10^{-6}E^{1.95})}\Big(1 - e^{-0.057(E/2.18 - 1)^{0.94}}\Big) + \frac{1.22\cdot10^3}{E^{0.5}(1 + 6.91\cdot10^{-4}E^{0.40})}\,e^{-125/E^{0.663}}, \qquad \text{eq. (159)}",
+    },
+    assumptions=(
+        r"$E$ in eV, $\sigma$ in $10^{-16}$ cm$^2$ unless stated, returned in m$^2$; the fits are evaluated above the threshold only, with the end values beyond $[E_\mathrm{from}, E_\mathrm{to}]$",
+        r"e + H$_2$ from H$_2$(X, v = 0), against the electron's energy (lab); the H$^-$ collisions against the centre-of-mass energy; fast H$^+$ and H$^-$ on H$_2$ against the projectile's energy (lab)",
+        r"the log-polynomials (eqs. 63, 71) valid from 0.1 eV to 20 keV against $E_\mathrm{cm}$, as the 2003 report gives them (HYDHEL has the same coefficients against $2E_\mathrm{cm}$)",
+        r"eqs. (144), (145) fitted to about 200 keV; above, the fit's power-law tail is kept, an extrapolation",
+        r"eq. (159) with $E$ in eV, although the report prints keV: its magnitudes and its 2.18 eV threshold hold in eV",
+        r"the report's stated accuracy of the fits; elastic collisions are outside its scope",
+    ),
+    references=(
+        "[Janev, Reiter and Samm, Jül-4105 (2003)](https://eirene.de/Documentation/report_4105.pdf)",
+    ),
+    symbolic=lambda: _hydrogen_fit_rules(),
+)
 @dataclass(frozen=True)
 class HydrogenFit:
     """One analytic cross-section fit of the report.
 
     Attributes:
-        key: The name of the fit in :data:`JANEV_FITS`.
+        key: The name of the fit in `JANEV_FITS`.
         reaction: The reaction, e.g. ``"e + H2(X, v=0) -> e + H2(B)"``.
         source: Equation and table of the report, e.g. ``"eq. (80), table 15"``.
         threshold: Energy in eV below which the cross section is zero.
         energy_frame: ``"lab"`` (incident energy, target at rest) or
-            ``"center_of_mass"``, as for :class:`~plasmacoll.CollisionProcess`.
+            ``"center_of_mass"``, as for `plasmacoll.CollisionProcess`.
         function: The fit, cross section in m^2 against energy in eV, for
             energies above the threshold.
         valid_from: Lowest energy in eV of the fit's validity (0: the threshold).
@@ -140,15 +295,29 @@ class HydrogenFit:
         """The reaction and its source, for plots and messages."""
         return f"{self.reaction}: {_SHORT}, {self.source}"
 
+    @method(
+        equations={
+            "grid": r"E_i \in \{E_\mathrm{th}\} \cup \Big(E_\mathrm{th} + \mathrm{geomspace}\big(10^{-6}E_\mathrm{th},\ E_{\max} - E_\mathrm{th},\ 241\big)\Big), \qquad E_{\max} = \min(\texttt{max\_energy}, E_\mathrm{to})",
+        },
+        assumptions=(
+            r"logarithmic in the energy above the threshold, which resolves the rise there",
+            r"for $E_\mathrm{th} = 0$ or $E_\mathrm{from} > E_\mathrm{th}$: 241 logarithmic points from $E_\mathrm{from}$ (or 1 meV) to $E_{\max}$",
+            r"the end values below and above the table (`CrossSection`)",
+        ),
+        components=(
+            "plasmacoll.janev.HydrogenFit",
+            "plasmacoll.cross_sections.CrossSection",
+        ),
+    )
     def cross_section(self, max_energy: float = 1.0e4, num: int = 241) -> CrossSection:
-        """Tabulate the fit up to ``max_energy`` (eV) for the collision operator.
+        """Tabulate the fit up to ``max_energy`` (eV, or a Quantity) for the collision operator.
 
         The table starts at the threshold (or at ``valid_from``) and is spaced
         logarithmically in the energy above the threshold, which resolves the
         rise of the cross section there. Below ``valid_from`` and above the last
-        point the end values hold (see :class:`~plasmacoll.CrossSection`).
+        point the end values hold (see `plasmacoll.CrossSection`).
         """
-        upper = min(max_energy, self.valid_to)
+        upper = min(to_unit(max_energy, "eV", "max_energy"), self.valid_to)
         if self.threshold <= 0.0 or self.valid_from > self.threshold:
             energy = np.geomspace(self.valid_from or 1.0e-3, upper, num)
             sigma = self.function(energy)
@@ -259,6 +428,47 @@ def _hminus_detachment(energy: np.ndarray) -> np.ndarray:
     )
 
 
+#: Table 31, v = 0: E_0v (eV), a_1..a_6 and b_1..b_11 of eqs. (145a), (145b).
+_PROTON_H2_CX_E0 = 2.67
+_PROTON_H2_CX_A = (18.60, -1.66, 2.53, 1.93, 0.0, 0.0)
+_PROTON_H2_CX_B = (
+    17.3, 105.0, 2.0, 1.0e4, -1.12, 3.64e-4, 0.90, 5.03e-19, 4.00, 5.87e-28, 5.50,
+)  # fmt: skip
+
+
+def _proton_h2_charge_exchange(energy: np.ndarray) -> np.ndarray:
+    """Eqs. (144), (145): H+ + H2(v=0) -> H + H2+ [1e-16 cm^2], E the proton's lab energy."""
+    a1, a2, a3, a4, a5, a6 = _PROTON_H2_CX_A
+    b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11 = _PROTON_H2_CX_B
+    low = (
+        a1
+        * energy**a2
+        * (1.0 - (_PROTON_H2_CX_E0 / energy) ** a3) ** a4
+        * np.exp(-a5 * energy**a6)
+    )
+    high = (
+        b1
+        * np.exp(-b2 / energy**b3)
+        / (b4 * energy**b5 + b6 * energy**b7 + b8 * energy**b9 + b10 * energy**b11)
+    )
+    return _A2 * (low + high)
+
+
+def _hminus_h2_detachment(energy: np.ndarray) -> np.ndarray:
+    """Eq. (159): H- + H2(v=0) -> H + H2 + e [1e-16 cm^2], E the H-'s lab energy in eV."""
+    low = (
+        81.10
+        / (energy**0.63 * (1.0 + 2.03e-6 * energy**1.95))
+        * (1.0 - np.exp(-0.057 * (energy / 2.18 - 1.0) ** 0.94))
+    )
+    high = (
+        1.22e3
+        / (energy**0.5 * (1.0 + 6.91e-4 * energy**0.40))
+        * np.exp(-125.0 / energy**0.663)
+    )
+    return _A2 * (low + high)
+
+
 def _log_polynomial(*coefficients: float) -> Callable[[np.ndarray], np.ndarray]:
     """Eqs. (63) and (71): ln sigma[cm^2] = sum_j a_j (ln E)^j."""
 
@@ -293,32 +503,6 @@ MUTUAL_NEUTRALIZATION_COEFFICIENTS: dict[int, tuple[float, ...]] = {
         -6.21659501e-5,
         4.12046807e-6,
         -1.039784996e-7,
-    ),
-}
-#: Table 11: the coefficients a_0..a_8 of eq. (71) for H- + H -> H + H + e
-#: (``"detachment"``) and H- + H -> H2 + e (``"associative_detachment"``).
-HMINUS_H_COEFFICIENTS: dict[str, tuple[float, ...]] = {
-    "detachment": (
-        -3.61799082e1,
-        1.16615172,
-        -1.41928602e-1,
-        -1.11195959e-2,
-        -1.72505995e-3,
-        1.59040356e-3,
-        -2.53196144e-4,
-        1.66978235e-5,
-        -4.09725797e-7,
-    ),
-    "associative_detachment": (
-        -3.44152907e1,
-        -3.39348209e-1,
-        5.66591705e-2,
-        -9.05150459e-3,
-        7.66060418e-4,
-        -4.27126462e-5,
-        -1.57273749e-7,
-        2.57607677e-7,
-        -1.20071919e-8,
     ),
 }
 
@@ -424,15 +608,53 @@ def _fits() -> dict[str, HydrogenFit]:
             _log_polynomial(*HMINUS_H_COEFFICIENTS["detachment"]),
             valid_from=0.1, valid_to=2.0e4,
         ),
+        HydrogenFit(
+            "proton_h2_charge_exchange", "H+ + H2(v=0) -> H + H2+",
+            "eqs. (144) and (145), table 31", 2.67, "lab", _proton_h2_charge_exchange,
+        ),
+        HydrogenFit(
+            "hminus_h2_detachment", "H- + H2(v=0) -> H + H2 + e", "eq. (159)",
+            2.18, "lab", _hminus_h2_detachment,
+        ),
     ]  # fmt: skip
     return {fit.key: fit for fit in fits}
 
 
 #: Every fit of the module by key (see the module docstring); the dissociative
-#: attachment levels are :func:`dissociative_attachment_fit`.
+#: attachment levels are `dissociative_attachment_fit`.
 JANEV_FITS: dict[str, HydrogenFit] = _fits()
 
 
+def _attachment_rules() -> dict:
+    """The SymPy rule of `dissociative_attachment_fit` at v = 5 (for the tests)."""
+    import sympy
+
+    e = sympy.symbols("energy", positive=True)
+    rule = sympy.Float(0.453e-20) * sympy.exp(
+        -(e - sympy.Float(1.43)) / sympy.Float(0.45)
+    )
+    return {
+        "attachment": Rule(
+            rule,
+            implementation=lambda energy: dissociative_attachment_fit(5)(energy),
+            ranges={"energy": (1.5, 10.0)},
+        )
+    }
+
+
+@method(
+    equations={
+        "attachment": r"\sigma_v(E) = \sigma_v^{(0)}\exp\Big(-\frac{E - |E_{\mathrm{th},v}|}{E_0}\Big), \qquad E \ge |E_{\mathrm{th},v}|, \qquad E_0 = 0.45\ \mathrm{eV}",
+    },
+    assumptions=(
+        r"$v = 0..14$, thresholds and peak values $\sigma_v^{(0)}$ of table 27; $|E_{\mathrm{th},v}|$ also for the exothermic levels $v \ge 10$, as printed",
+        r"the prefactor of eq. (125), 2.95 times the Maxwellian average of this fit, is not used: rate coefficients come from the cross section",
+    ),
+    references=(
+        "[Janev, Reiter and Samm, Jül-4105 (2003)](https://eirene.de/Documentation/report_4105.pdf), eq. (124), table 27",
+    ),
+    symbolic=lambda: _attachment_rules(),
+)
 def dissociative_attachment_fit(level: int) -> HydrogenFit:
     """The dissociative attachment e + H2(X, v) -> H- + H of one level, eq. (124).
 
@@ -444,7 +666,7 @@ def dissociative_attachment_fit(level: int) -> HydrogenFit:
     Eq. (125) has the temperature dependence of the Maxwellian average of this
     fit, but its prefactor, 1.972e-8 cm^3/s per 1e-16 cm^2 and eV^(1/2), is
     2.95 times sqrt(8 e / (pi m_e)) = 0.669e-8 of that average; compute rate
-    coefficients from the cross section (:func:`~plasmacoll.rate_coefficient`).
+    coefficients from the cross section (`plasmacoll.rate_coefficient`).
 
     Args:
         level: The vibrational level v, 0 to 14.
@@ -473,9 +695,10 @@ def dissociative_attachment_levels(max_energy: float = 30.0) -> list[CrossSectio
     """The tabulated dissociative attachment cross sections of v = 0..14.
 
     The table of each level starts at the peak value at its onset |E_th,v|
-    (zero below it) and ends at ``max_energy`` (eV), where the exponential has
-    fallen by many orders of magnitude.
+    (zero below it) and ends at ``max_energy`` (eV, or a Quantity), where the
+    exponential has fallen by many orders of magnitude.
     """
+    max_energy = to_unit(max_energy, "eV", "max_energy")
     tables = []
     for level in range(len(DISSOCIATIVE_ATTACHMENT_LEVELS)):
         fit = dissociative_attachment_fit(level)
@@ -490,6 +713,19 @@ def dissociative_attachment_levels(max_energy: float = 30.0) -> list[CrossSectio
     return tables
 
 
+@method(
+    equations={
+        "mixture": r"\sigma_\mathrm{DA}(E) = \frac{\sum_v n_v\,\sigma_v(E)}{\sum_v n_v}, \qquad v = 0..14",
+    },
+    assumptions=(
+        r"one table per level: its onset plus 161 logarithmic offsets from $10^{-5}$ eV to 30 eV $- |E_{\mathrm{th},v}|$, the last value beyond",
+        r"the populations of a prescribed `VibrationalDistribution` (15 levels of H$_2$(X))",
+    ),
+    components=(
+        "plasmacoll.janev.dissociative_attachment_fit",
+        "plasmacoll.cross_sections.CrossSection.vibrational_mixture",
+    ),
+)
 def dissociative_attachment(
     distribution: VibrationalDistribution, label: str = ""
 ) -> CrossSection:

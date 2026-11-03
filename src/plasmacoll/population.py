@@ -2,9 +2,9 @@
 
 Collisions give products the weight of the incident marker, so ionization
 doubles the number of electron markers every ionization time, and attachment
-or charge transfer drains a species. :func:`merge_markers` reduces a species to
-a target number of markers and :func:`split_markers` divides markers heavier
-than a limit. Both work on any :class:`~plasmacoll.markers.MarkerSet`.
+or charge transfer drains a species. `merge_markers` reduces a species to
+a target number of markers and `split_markers` divides markers heavier
+than a limit. Both work on any `plasmacoll.markers.MarkerSet`.
 
 Merging groups markers that are close in phase space (the same spatial cell,
 the same velocity octant and neighbouring speeds) and replaces every group of
@@ -25,6 +25,7 @@ from typing import Any
 import cunumpy as xp
 import numpy as np
 import scope_profiler as sp
+from methodcard import method
 
 from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll.markers import MarkerSet
@@ -32,6 +33,14 @@ from plasmacoll.markers import MarkerSet
 __all__ = ["merge_markers", "split_markers"]
 
 
+@method(
+    equations={
+        "split": r"w \to k \text{ copies of weight } \frac{w}{k}, \qquad k = \Big\lceil\frac{w}{w_{\max}}\Big\rceil",
+    },
+    assumptions=(
+        r"at the same position and velocity: weight, momentum and energy exact",
+    ),
+)
 @sp.profile("plasmacoll.split_markers", tags=PROFILE_TAGS)
 def split_markers(markers: MarkerSet, max_weight: float) -> int:
     """Split every marker heavier than ``max_weight`` into equal lighter copies.
@@ -72,6 +81,21 @@ def _random_directions(rng: Any, num: int) -> np.ndarray:
     )
 
 
+@method(
+    equations={
+        "moments": r"W = \sum_i w_i, \qquad \mathbf u = \frac{1}{W}\sum_i w_i\mathbf v_i, \qquad s^2 = \max\Big(\frac{1}{W}\sum_i w_i|\mathbf v_i|^2 - |\mathbf u|^2,\ 0\Big)",
+        "merged": r"\text{two markers of weight } \frac W2 \text{ at } \mathbf u \pm s\,\hat{\mathbf n}, \ \hat{\mathbf n} \text{ isotropic, at the mean position}",
+        "conservation": r"\frac W2\big[(\mathbf u + s\hat{\mathbf n}) + (\mathbf u - s\hat{\mathbf n})\big] = W\mathbf u, \qquad \frac W2\cdot 2\big(|\mathbf u|^2 + s^2\big) = \sum_i w_i|\mathbf v_i|^2",
+        "groups": r"\text{runs of } \max\Big(3, \Big\lceil\frac{2N}{N_\mathrm{target}}\Big\rceil\Big) \text{ markers}",
+    },
+    assumptions=(
+        r"groups within a spatial cell (`cell_size`) and velocity octant, sorted by speed; runs of three or more merge into two",
+        r"weight, momentum and kinetic energy exact; the result can exceed the target when the cells hold few markers; on the host",
+    ),
+    references=(
+        "[Vranic et al., Comput. Phys. Commun. 191, 65 (2015)](https://doi.org/10.1016/j.cpc.2015.01.020)",
+    ),
+)
 @sp.profile("plasmacoll.merge_markers", tags=PROFILE_TAGS)
 def merge_markers(
     markers: MarkerSet,
@@ -84,7 +108,7 @@ def merge_markers(
 
     Within each spatial cell (of size ``cell_size`` along every position
     component; one cell for all if None) and velocity octant, the markers are
-    sorted by speed and grouped in runs of ``ceil(2 N / target)``; every group
+    sorted by speed and grouped in runs of ``max(3, ceil(2 N / target))``; every group
     of three or more becomes two markers. Groups are formed per cell, so the
     result can exceed ``target`` when the cells hold few markers each.
 

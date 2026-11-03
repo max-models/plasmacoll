@@ -721,3 +721,93 @@ def test_collide_species_respects_an_alive_mask() -> None:
     mcc = operator([CollisionProcess("elastic", "gas", constant(1.0e-18))], {"e": M_E})
     diagnostics = mcc.collide_species({"e": electrons}, dt=1.0)
     assert diagnostics["e"].counts["elastic:gas"] == 10
+
+
+def test_ionization_reports_the_consumed_neutrals() -> None:
+    mcc = operator(
+        [
+            CollisionProcess(
+                "ionization",
+                "gas",
+                constant(1.0e-18, threshold=24.59),
+                products={"electron": "e", "ion": "ion"},
+            )
+        ],
+        {"e": M_E, "ion": M_HE},
+    )
+    num = 200
+    positions = xp.linspace(0.0, 1.0, num)[:, None]
+    weights = xp.full(num, 3.0)
+    result = mcc.collide("e", positions, beam(num, 100.0, M_E), weights, dt=1.0)
+
+    (batch,) = result.consumed["gas"]
+    (ion,) = result.created["ion"]
+    assert bool(xp.allclose(batch.positions, ion.positions))
+    assert bool(xp.allclose(batch.weights, ion.weights))
+    assert bool(xp.allclose(batch.velocities, ion.velocities))
+    assert float(xp.sum(batch.weights)) == pytest.approx(3.0 * num)
+
+
+def test_charge_transfer_and_elastic_consume_no_neutrals() -> None:
+    mcc = operator(
+        [
+            CollisionProcess(
+                "charge_transfer", "gas", constant(1.0e-18), products={"ion": "ion"}
+            ),
+            CollisionProcess("elastic", "gas", constant(1.0e-18)),
+        ],
+        {"ion": M_HE},
+        incident="ion",
+    )
+    num = 100
+    result = mcc.collide("ion", _origin(num), beam(num, 10.0, M_HE), _ones(num), dt=1.0)
+    assert result.diagnostics.real_collisions == num
+    assert result.consumed == {}
+
+
+def test_collide_species_collects_the_consumed_neutrals_per_background() -> None:
+    mcc = MonteCarloCollisions(
+        species_masses={"e": M_E, "ion": M_HE, "neg": M_HE},
+        backgrounds=[
+            NeutralBackground("gas", 1.0e20, 0.0, HEAVY),
+            NeutralBackground("other", 1.0e20, 0.0, HEAVY),
+        ],
+        processes={
+            "e": [
+                CollisionProcess(
+                    "ionization",
+                    "gas",
+                    constant(1.0e-18, threshold=24.59),
+                    products={"electron": "e", "ion": "ion"},
+                ),
+                CollisionProcess(
+                    "attachment",
+                    "other",
+                    constant(1.0e-18),
+                    products={"negative_ion": "neg"},
+                ),
+            ]
+        },
+        seed=3,
+        bound_safety=1.0,
+    )
+    num = 60
+    sets = {
+        "e": ParticleArrays(
+            positions=xp.zeros((num, 1)),
+            velocities=beam(num, 100.0, M_E),
+            weights=xp.full(num, 2.0),
+        ),
+        "ion": ParticleArrays.empty(1),
+        "neg": ParticleArrays.empty(1),
+    }
+    consumed: dict = {}
+    mcc.collide_species(sets, dt=1.0, consumed=consumed)
+    taken = {
+        name: float(sum(float(xp.sum(b.weights)) for b in batches))
+        for name, batches in consumed.items()
+    }
+    assert set(taken) <= {"gas", "other"}
+    assert sum(taken.values()) == pytest.approx(2.0 * num)
+    assert taken.get("gas", 0.0) == pytest.approx(2.0 * sets["ion"].weights.size)
+    assert taken.get("other", 0.0) == pytest.approx(2.0 * sets["neg"].weights.size)

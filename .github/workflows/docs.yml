@@ -22,12 +22,15 @@ concurrency:
 
 jobs:
   docs:
-    uses: max-models/starlight-theme/.github/workflows/docs.yml@v0.5.0
+    uses: max-models/starlight-theme/.github/workflows/docs.yml@v0
     with:
       smoke-paths: |
         getting-started/installation/index.html
         guides/null-collision-method/index.html
-        tutorials/02-relaxation/index.html
+        examples/02-relaxation/index.html
+        numerics/index.html
+        numerics/mcc/index.html
+        numerics/boltzmann/index.html
         api/plasmacoll/index.html
         api/plasmacoll/mcc/index.html
         api/plasmacoll/cross_sections/index.html
