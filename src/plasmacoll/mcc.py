@@ -486,6 +486,11 @@ class MonteCarloCollisions:
             if len(set(names)) != len(names):
                 raise ValueError(f"Process names of {species!r} are not unique")
             for process in procs:
+                if process.upper_state is not None:
+                    raise ValueError(
+                        f"Process {process.name!r} has an upper_state: superelastic "
+                        "collisions are only in plasmacoll.boltzmann.solve_eedf"
+                    )
                 if process.background not in self._backgrounds:
                     raise KeyError(
                         f"Process {process.name!r} uses unknown background "

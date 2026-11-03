@@ -163,6 +163,15 @@ class CollisionProcess:
             in e: 1 for single stripping (``H- -> H``, ``H -> H+``), 2 for
             double stripping (``H- -> H+``), -1 for electron capture
             (``H+ -> H``). A positive change releases that many electrons.
+        upper_state: For ``excitation``, the background (or state, see
+            `plasmacoll.boltzmann.solve_eedf`) of the excited molecules. If
+            given, the Boltzmann solver adds the inverse (superelastic)
+            collisions with them, whose cross section follows from this one by
+            detailed balance; `plasmacoll.mcc.MonteCarloCollisions` does not
+            take such processes.
+        statistical_weight_ratio: The ratio ``g_upper / g_lower`` of the
+            statistical weights of the excited and the initial state, for
+            ``upper_state``.
     """
 
     kind: str
@@ -176,6 +185,8 @@ class CollisionProcess:
     sharing_energy: float | None = None
     scattering: str = "isotropic"
     charge_change: int = 1
+    upper_state: str | None = None
+    statistical_weight_ratio: float = 1.0
 
     def __post_init__(self) -> None:
         """Validate the process definition."""
@@ -225,6 +236,12 @@ class CollisionProcess:
             )
         if self.energy_loss is not None and self.energy_loss < 0.0:
             raise ValueError("energy_loss must be >= 0")
+        if self.upper_state is not None and self.kind != "excitation":
+            raise ValueError(
+                "upper_state (superelastic collisions) needs an excitation"
+            )
+        if not self.statistical_weight_ratio > 0.0:
+            raise ValueError("statistical_weight_ratio must be > 0")
         object.__setattr__(self, "products", dict(self.products))
         if not self.name:
             object.__setattr__(self, "name", f"{self.kind}:{self.background}")
