@@ -41,6 +41,7 @@ from methodcard import ConvergenceProblem, Rule, method
 from plasmacoll._types import Array
 from plasmacoll.constants import ELECTRON_MASS, PROTON_MASS
 from plasmacoll.cross_sections import CrossSection
+from plasmacoll.units import convert_units, to_array, to_unit, unit_field
 
 __all__ = ["RUDD_H2", "RuddIonization", "RuddShell"]
 
@@ -59,7 +60,7 @@ class RuddShell:
     """One shell of a target in Rudd's model.
 
     Attributes:
-        binding_energy: ``I`` in eV.
+        binding_energy: ``I`` in eV; also an astropy Quantity or a string.
         electrons: ``N``, the electrons in the shell.
         a1: ``A1``.
         b1: ``B1``.
@@ -87,7 +88,9 @@ class RuddShell:
     alpha: float
 
     def __post_init__(self) -> None:
-        """Validate the shell."""
+        """Convert the binding energy and validate the shell."""
+        energy = to_unit(self.binding_energy, "eV", "binding_energy")
+        object.__setattr__(self, "binding_energy", energy)
         if self.binding_energy <= 0.0 or self.electrons <= 0.0:
             raise ValueError("a shell needs binding_energy > 0 and electrons > 0")
         if self.alpha <= 0.0:
@@ -200,16 +203,18 @@ class RuddIonization:
 
     Attributes:
         shells: The target's shells.
-        projectile_mass: ``M`` in kg; the proton mass by default.
+        projectile_mass: ``M`` in kg; the proton mass by default. Also an
+            astropy Quantity or a string such as ``"2.014 u"``.
         label: A name for plots and messages.
     """
 
     shells: Sequence[RuddShell]
-    projectile_mass: float = PROTON_MASS
+    projectile_mass: float = unit_field("kg", PROTON_MASS)
     label: str = ""
 
     def __post_init__(self) -> None:
-        """Validate the target and the projectile."""
+        """Convert the mass and validate the target and the projectile."""
+        convert_units(self)
         object.__setattr__(self, "shells", tuple(self.shells))
         if not self.shells:
             raise ValueError("a target needs at least one shell")
@@ -256,7 +261,12 @@ class RuddIonization:
         return sum(m[1] for m in moments) / sum(m[0] for m in moments)
 
     def cross_section(self, projectile_energy: Array | Sequence[float]) -> CrossSection:
-        """The total cross section tabulated at the projectile energies (eV, lab frame)."""
+        """The total cross section tabulated at the projectile energies (eV, lab frame).
+
+        The energies may be an astropy Quantity or a string such as
+        ``"[1, 10, 100] keV"``.
+        """
+        projectile_energy = to_array(projectile_energy, "eV", "projectile_energy")
         grid = np.asarray(xp.to_numpy(xp.asarray(projectile_energy)), dtype=float)
         return CrossSection.from_function(
             lambda e: np.array([self.total(float(x)) for x in e]),

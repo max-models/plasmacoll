@@ -45,6 +45,7 @@ from plasmacoll.cross_sections import (
     read_lxcat,
 )
 from plasmacoll.process import CollisionProcess
+from plasmacoll.units import to_unit
 
 __all__ = [
     "ARGON_IONIZATION_ENERGY",
@@ -200,7 +201,8 @@ def argon_ion_cross_sections(
 
     The tables have ``num`` logarithmically spaced points from ``min_energy``
     to ``max_energy`` (eV), the range of the LXCat tables; below and above
-    them the end values are used.
+    them the end values are used. The energies take astropy Quantities,
+    strings such as ``"10 keV"`` or plain numbers in eV.
 
     Args:
         revision: One of `PHELPS_REVISIONS`, see the module docstring.
@@ -212,6 +214,8 @@ def argon_ion_cross_sections(
         ``{"isotropic": Q_i, "backscatter": Q_b}``.
     """
     _check_revision(revision)
+    min_energy = to_unit(min_energy, "eV", "min_energy")
+    max_energy = to_unit(max_energy, "eV", "max_energy")
     if not 0.0 < min_energy < max_energy:
         raise ValueError("need 0 < min_energy < max_energy")
     energy = np.geomspace(min_energy, max_energy, num)
@@ -350,7 +354,7 @@ def argon_electron_processes(
         ion: The ion species ionization creates.
         energy_sharing: Ionization energy sharing, see
             `plasmacoll.process.CollisionProcess`.
-        sharing_energy: The ``w`` of ``"opal"`` sharing in eV.
+        sharing_energy: The ``w`` of ``"opal"`` sharing in eV (or a Quantity).
 
     Raises:
         KeyError: If the set has no momentum-transfer or no ionization block.

@@ -23,6 +23,7 @@ from methodcard import ConvergenceProblem, Rule, method
 from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll._types import Array, PathLikeStr
 from plasmacoll.constants import ELEMENTARY_CHARGE
+from plasmacoll.units import to_array, to_unit
 
 __all__ = [
     "LXCAT_ION_PROCESS_KINDS",
@@ -78,7 +79,9 @@ class CrossSection:
     ``energy`` is in eV and ``sigma`` in m^2. Values are interpolated linearly
     between table points, as prescribed by the Turner et al. (2013) benchmark.
     Beyond the last point the last value is used. Below ``threshold`` (eV)
-    the cross section is zero.
+    the cross section is zero. ``energy``, ``sigma`` and ``threshold`` take
+    astropy Quantities (``[1, 10] * u.keV``), strings (``"[1, 2] cm2"``) or
+    plain numbers and arrays in eV and m^2.
 
     Attributes:
         energy: Table energies in eV, non-decreasing.
@@ -93,9 +96,11 @@ class CrossSection:
     label: str = ""
 
     def __post_init__(self) -> None:
-        """Validate and normalize the table."""
-        energy = xp.asarray(self.energy, dtype=float)
-        sigma = xp.asarray(self.sigma, dtype=float)
+        """Convert to eV and m^2, validate and normalize the table."""
+        energy = xp.asarray(to_array(self.energy, "eV", "energy"), dtype=float)
+        sigma = xp.asarray(to_array(self.sigma, "m^2", "sigma"), dtype=float)
+        threshold = to_unit(self.threshold, "eV", "threshold")
+        object.__setattr__(self, "threshold", threshold)
         if energy.ndim != 1 or energy.shape != sigma.shape:
             raise ValueError("energy and sigma must be 1D arrays of equal length")
         if energy.size < 2:
@@ -124,12 +129,17 @@ class CrossSection:
     ) -> CrossSection:
         """Return a cross section that is ``sigma`` (m^2) at every energy above threshold.
 
+        The physical arguments take astropy Quantities, strings or plain
+        numbers in the units below.
+
         Args:
             sigma: The cross section in m^2.
             threshold: Energy in eV below which the cross section is zero.
             max_energy: Last table energy in eV; the value continues beyond it anyway.
             label: A name for plots and messages.
         """
+        sigma = to_unit(sigma, "m^2", "sigma")
+        max_energy = to_unit(max_energy, "eV", "max_energy")
         return cls(
             energy=xp.asarray([0.0, float(max_energy)]),
             sigma=xp.asarray([float(sigma), float(sigma)]),
@@ -168,7 +178,8 @@ class CrossSection:
         as the temperature, have closed-form solutions, which makes this the
         cross section of choice for benchmarks. The table has ``num``
         logarithmically spaced points from ``min_energy`` to ``max_energy`` (eV);
-        below and above them the end values are used.
+        below and above them the end values are used. The physical arguments
+        take astropy Quantities, strings or plain numbers in the units below.
 
         Args:
             rate_coefficient: ``K = sigma g`` in m^3/s.
@@ -179,6 +190,10 @@ class CrossSection:
             num: Number of table points.
             label: A name for plots and messages.
         """
+        rate_coefficient = to_unit(rate_coefficient, "m^3/s", "rate_coefficient")
+        mass = to_unit(mass, "kg", "mass")
+        min_energy = to_unit(min_energy, "eV", "min_energy")
+        max_energy = to_unit(max_energy, "eV", "max_energy")
         if rate_coefficient < 0.0:
             raise ValueError("rate_coefficient must be >= 0")
         if mass <= 0.0:
@@ -211,10 +226,12 @@ class CrossSection:
 
         Args:
             function: Cross section in m^2 as a function of energy in eV.
-            energy: The table energies in eV, non-decreasing.
+            energy: The table energies in eV, non-decreasing; also a Quantity
+                or a string such as ``"[1, 10, 100] keV"``.
             threshold: Energy in eV below which the cross section is zero.
             label: A name for plots and messages.
         """
+        energy = to_array(energy, "eV", "energy")
         grid = np.asarray(xp.to_numpy(xp.asarray(energy, dtype=float)))
         values = np.asarray(function(grid), dtype=float)
         return cls(
@@ -321,10 +338,14 @@ class CrossSection:
             path: The text file.
             threshold: Energy in eV below which the cross section is zero.
             delimiter: Column separator; whitespace if None.
-            energy_unit: Factor converting the first column to eV.
-            sigma_unit: Factor converting the second column to m^2.
+            energy_unit: Factor converting the first column to eV, or the unit
+                of the column as a quantity, e.g. ``"1 keV"`` or ``1 * u.keV``.
+            sigma_unit: Factor converting the second column to m^2, or the unit
+                of the column as a quantity, e.g. ``"1 cm2"``.
             label: A name for plots and messages; the file name if empty.
         """
+        energy_unit = to_unit(energy_unit, "eV", "energy_unit")
+        sigma_unit = to_unit(sigma_unit, "m^2", "sigma_unit")
         energies = []
         sigmas = []
         for line in Path(path).read_text().splitlines():
@@ -409,7 +430,7 @@ class CrossSection:
         )
 
     def with_threshold(self, threshold: float) -> CrossSection:
-        """Return a copy of this table with another threshold (eV)."""
+        """Return a copy of this table with another threshold (eV, or a Quantity)."""
         return CrossSection(
             energy=self.energy,
             sigma=self.sigma,

@@ -33,6 +33,7 @@ from methodcard import Rule, method
 from plasmacoll._types import Array
 from plasmacoll.constants import ATOMIC_MASS
 from plasmacoll.cross_sections import CrossSection
+from plasmacoll.units import convert_units, to_unit, unit_field
 
 __all__ = [
     "LOTZ_CONSTANT",
@@ -68,6 +69,9 @@ METAL_OUTER_SUBSHELLS: dict[tuple[str, int], tuple[str, int, float]] = {
 class LotzSubshell:
     """One subshell of the Lotz formula.
 
+    ``binding_energy`` and ``a`` take astropy Quantities, strings or plain
+    numbers in the units below.
+
     Attributes:
         binding_energy: ``P_i`` in eV, the threshold of the subshell.
         electrons: ``q_i``, the number of electrons in the subshell.
@@ -78,12 +82,15 @@ class LotzSubshell:
 
     binding_energy: float
     electrons: float
-    a: float = LOTZ_CONSTANT
+    a: float = unit_field("m^2 eV^2", LOTZ_CONSTANT)
     b: float = 0.0
     c: float = 0.0
 
     def __post_init__(self) -> None:
-        """Validate the parameters."""
+        """Convert the quantities and validate the parameters."""
+        convert_units(self)
+        energy = to_unit(self.binding_energy, "eV", "binding_energy")
+        object.__setattr__(self, "binding_energy", energy)
         if self.binding_energy <= 0.0:
             raise ValueError("binding_energy must be > 0")
         if self.electrons <= 0.0:
@@ -171,10 +178,11 @@ def lotz_table(
 
     Args:
         subshells: The subshells of the target.
-        max_energy: Last table energy in eV.
+        max_energy: Last table energy in eV (or a Quantity).
         num: Number of logarithmically spaced points.
         label: A name for plots and messages.
     """
+    max_energy = to_unit(max_energy, "eV", "max_energy")
     if not subshells:
         raise ValueError("subshells must not be empty")
     threshold = min(shell.binding_energy for shell in subshells)
@@ -227,7 +235,7 @@ def metal_ionization_cross_section(
     Args:
         element: ``"Cu"`` or ``"Ti"``.
         charge: 0 for the atom, 1 for the singly charged ion.
-        max_energy: Last table energy in eV.
+        max_energy: Last table energy in eV (or a Quantity).
         num: Number of table points.
 
     Raises:

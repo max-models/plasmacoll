@@ -47,6 +47,7 @@ from plasmacoll.cross_sections import CrossSection
 from plasmacoll.mcc import MonteCarloCollisions
 from plasmacoll.metals import LotzSubshell, lotz_table
 from plasmacoll.process import CollisionProcess
+from plasmacoll.units import to_unit
 
 __all__ = [
     "CAESIUM_IONIZATION_ENERGY",
@@ -97,7 +98,7 @@ def caesium_ionization_cross_section(
     """Return the Lotz cross section of ``e + Cs -> Cs+ + 2e`` (6s shell) in m^2.
 
     Args:
-        max_energy: Last table energy in eV.
+        max_energy: Last table energy in eV (or a Quantity).
         num: Number of table points.
     """
     return lotz_table(
@@ -117,9 +118,12 @@ def electron_background(
 ) -> NeutralBackground:
     """Return the ionizing electrons as a background, ``n_e(x)`` and ``T_e(x)``.
 
+    ``density`` and ``temperature`` take astropy Quantities, strings or plain
+    numbers, as for `plasmacoll.background.NeutralBackground`.
+
     Args:
         density: Reference electron density in m^-3.
-        temperature: Reference electron temperature in eV.
+        temperature: Reference electron temperature ``kT`` in eV.
         density_profile: Factor of ``density`` against position.
         temperature_profile: Factor of ``temperature`` against position.
         name: The background's name.
@@ -145,7 +149,7 @@ def caesium_ionization_process(
     Args:
         background: Name of the electron background.
         ion: The product species.
-        max_energy: Last table energy of the cross section in eV.
+        max_energy: Last table energy of the cross section in eV (or a Quantity).
     """
     return CollisionProcess(
         "stripping",
@@ -210,9 +214,12 @@ def langevin_rate_coefficient(polarizability: float, reduced_mass: float) -> flo
     """Return the Langevin capture rate ``2 pi sqrt(alpha e^2 / (4 pi eps0 mu))`` (m^3/s).
 
     Args:
-        polarizability: Polarizability volume of the neutral in m^3.
-        reduced_mass: Reduced mass of ion and neutral in kg.
+        polarizability: Polarizability volume of the neutral in m^3 (or a
+            Quantity, e.g. ``"0.8 Angstrom3"``).
+        reduced_mass: Reduced mass of ion and neutral in kg (or a Quantity).
     """
+    polarizability = to_unit(polarizability, "m^3", "polarizability")
+    reduced_mass = to_unit(reduced_mass, "kg", "reduced_mass")
     if polarizability <= 0.0 or reduced_mass <= 0.0:
         raise ValueError("polarizability and reduced_mass must be > 0")
     return (

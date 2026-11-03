@@ -38,6 +38,7 @@ from methodcard import Rule, method
 from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll.cross_sections import CrossSection
 from plasmacoll.process import CollisionProcess
+from plasmacoll.units import to_array, to_unit
 
 __all__ = ["ChargeStateTransitions", "charge_state_fractions", "stripping_processes"]
 
@@ -80,6 +81,9 @@ def _expm(matrix: np.ndarray) -> np.ndarray:
 class ChargeStateTransitions:
     """The charge-changing cross sections of a beam, per target.
 
+    The cross sections take astropy Quantities, strings such as ``"1e-16
+    cm2"`` or plain numbers in m^2.
+
     Attributes:
         cross_sections: ``{target: {(from_state, to_state): sigma}}`` in m^2.
         states: The charge states, in the order of the fractions.
@@ -89,7 +93,15 @@ class ChargeStateTransitions:
     states: Sequence[str] = field(default=HYDROGEN_STATES)
 
     def __post_init__(self) -> None:
-        """Validate the states and the cross sections."""
+        """Convert and validate the states and the cross sections."""
+        object.__setattr__(
+            self,
+            "cross_sections",
+            {
+                target: to_unit(dict(table), "m^2", f"cross_sections[{target!r}]")
+                for target, table in self.cross_sections.items()
+            },
+        )
         states = tuple(self.states)
         if len(set(states)) != len(states) or len(states) < 2:
             raise ValueError("states must be at least two distinct names")
@@ -103,11 +115,6 @@ class ChargeStateTransitions:
                 if sigma < 0.0:
                     raise ValueError(f"target {target!r}: cross sections must be >= 0")
         object.__setattr__(self, "states", states)
-        object.__setattr__(
-            self,
-            "cross_sections",
-            {t: dict(table) for t, table in self.cross_sections.items()},
-        )
 
     @property
     def targets(self) -> tuple[str, ...]:
@@ -204,7 +211,8 @@ def charge_state_fractions(
         transitions: The cross sections.
         line_density: ``{target: pi_t}``, the line density in m^-2 of each
             target accumulated from the start of the path, at the same points
-            for every target (non-decreasing, starting at the first point).
+            for every target (non-decreasing, starting at the first point);
+            arrays or astropy Quantities.
             Targets missing from ``transitions`` are refused; targets of
             ``transitions`` missing here contribute nothing.
         initial: The fractions at the start, by state name or in the order of
@@ -219,7 +227,10 @@ def charge_state_fractions(
     unknown = set(line_density) - set(transitions.targets)
     if unknown:
         raise ValueError(f"no cross sections for the target(s) {sorted(unknown)}")
-    columns = {t: np.asarray(v, dtype=float) for t, v in line_density.items()}
+    columns = {
+        t: np.asarray(to_array(v, "m^-2", f"line_density[{t!r}]"), dtype=float)
+        for t, v in line_density.items()
+    }
     lengths = {c.shape for c in columns.values()}
     if len(lengths) != 1 or len(next(iter(lengths))) != 1:
         raise ValueError("every target needs a 1D line density at the same points")

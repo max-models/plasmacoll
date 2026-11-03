@@ -25,6 +25,7 @@ from plasmacoll.constants import ELEMENTARY_CHARGE
 from plasmacoll.markers import ParticleArrays
 from plasmacoll.mcc import MonteCarloCollisions
 from plasmacoll.population import merge_markers
+from plasmacoll.units import to_unit
 
 __all__ = ["ReactorHistory", "ReactorState", "ZeroDReactor"]
 
@@ -131,7 +132,9 @@ class ZeroDReactor:
     """A homogeneous reactor of volume ``volume`` advanced by collisions and a field.
 
     Each step first accelerates every charged species in the electric field,
-    ``v += q E dt / m``, then collides all species.
+    ``v += q E dt / m``, then collides all species. ``volume`` and
+    ``electric_field`` take astropy Quantities (``1 * u.cm**3``), strings
+    (``"[0, 0, 100] V/m"``) or plain numbers in the units below.
 
     Args:
         collisions: The collision operator; it knows the mass of every species.
@@ -163,6 +166,8 @@ class ZeroDReactor:
         seed: int | None = None,
     ) -> None:
         """Check the species and start every missing one without markers."""
+        volume = to_unit(volume, "m^3", "volume")
+        electric_field = to_unit(electric_field, "V/m", "electric_field")
         if volume <= 0.0:
             raise ValueError(f"volume must be > 0, got {volume}")
         masses = collisions.species_masses
@@ -259,13 +264,15 @@ class ZeroDReactor:
         """Advance ``num_steps`` steps of ``dt`` (s).
 
         Args:
-            dt: The time step in s.
+            dt: The time step in s; also an astropy Quantity or a string such
+                as ``"1 ns"``.
             num_steps: The number of steps.
             every: Record the state every ``every`` steps.
 
         Returns:
             The initial state and the recorded states as arrays over time.
         """
+        dt = to_unit(dt, "s", "dt")
         if every < 1:
             raise ValueError("every must be >= 1")
         states = [self.state()]

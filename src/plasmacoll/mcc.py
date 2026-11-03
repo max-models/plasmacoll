@@ -107,6 +107,7 @@ from plasmacoll.background import NeutralBackground, is_dynamic
 from plasmacoll.constants import ELEMENTARY_CHARGE
 from plasmacoll.markers import MarkerSet
 from plasmacoll.process import CollisionProcess
+from plasmacoll.units import to_unit
 
 __all__ = [
     "MCCDiagnostics",
@@ -338,7 +339,8 @@ class MonteCarloCollisions:
 
     Args:
         species_masses: The mass in kg of every species that collides or is
-            produced by a collision.
+            produced by a collision; an astropy Quantity (``40 * u.u``), a
+            string (``"40 u"``) or a number in kg.
         backgrounds: The neutral gases.
         processes: The processes of each incident species.
         seed: Seed of the random stream; from the operating system if None.
@@ -471,7 +473,7 @@ class MonteCarloCollisions:
         max_collision_probability: float = 0.1,
     ) -> None:
         """Check the definitions and tabulate the collision-frequency bounds."""
-        self._masses = {name: float(mass) for name, mass in species_masses.items()}
+        self._masses = to_unit(dict(species_masses), "kg", "species_masses")
         self._backgrounds = {bg.name: bg for bg in backgrounds}
         self._processes = {name: tuple(procs) for name, procs in processes.items()}
         if len(self._backgrounds) != len(backgrounds):

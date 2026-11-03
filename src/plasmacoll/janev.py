@@ -69,6 +69,7 @@ from methodcard import Rule, method
 
 from plasmacoll._types import Array
 from plasmacoll.cross_sections import CrossSection
+from plasmacoll.units import to_unit
 from plasmacoll.vibrational import VibrationalDistribution
 
 __all__ = [
@@ -309,14 +310,14 @@ class HydrogenFit:
         ),
     )
     def cross_section(self, max_energy: float = 1.0e4, num: int = 241) -> CrossSection:
-        """Tabulate the fit up to ``max_energy`` (eV) for the collision operator.
+        """Tabulate the fit up to ``max_energy`` (eV, or a Quantity) for the collision operator.
 
         The table starts at the threshold (or at ``valid_from``) and is spaced
         logarithmically in the energy above the threshold, which resolves the
         rise of the cross section there. Below ``valid_from`` and above the last
         point the end values hold (see `plasmacoll.CrossSection`).
         """
-        upper = min(max_energy, self.valid_to)
+        upper = min(to_unit(max_energy, "eV", "max_energy"), self.valid_to)
         if self.threshold <= 0.0 or self.valid_from > self.threshold:
             energy = np.geomspace(self.valid_from or 1.0e-3, upper, num)
             sigma = self.function(energy)
@@ -694,9 +695,10 @@ def dissociative_attachment_levels(max_energy: float = 30.0) -> list[CrossSectio
     """The tabulated dissociative attachment cross sections of v = 0..14.
 
     The table of each level starts at the peak value at its onset |E_th,v|
-    (zero below it) and ends at ``max_energy`` (eV), where the exponential has
-    fallen by many orders of magnitude.
+    (zero below it) and ends at ``max_energy`` (eV, or a Quantity), where the
+    exponential has fallen by many orders of magnitude.
     """
+    max_energy = to_unit(max_energy, "eV", "max_energy")
     tables = []
     for level in range(len(DISSOCIATIVE_ATTACHMENT_LEVELS)):
         fit = dissociative_attachment_fit(level)
