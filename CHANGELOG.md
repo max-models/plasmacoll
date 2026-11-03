@@ -7,6 +7,16 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Superelastic collisions in `solve_eedf`: an excitation with `upper_state` (and
+  `statistical_weight_ratio`, new `CollisionProcess` fields) also has its inverse, by detailed
+  balance; its rate is `"<name> (superelastic)"` and its power `power["superelastic"]`.
+  `MonteCarloCollisions` rejects such processes.
+- `states` of `solve_eedf` and `swarm_table`: vibrational or rotational levels of a gas with their
+  populations, which processes may name as their background or upper state.
+- The two-term solver checked against LoKI-B++ (`test_boltzmann_lokib.py`, reference in
+  `tests/unit/data/lokib_reference.json`, made by `tests/unit/_lokib_models.py`): temporal and
+  spatial growth, equal and Opal-Peterson-Beaty sharing, an H2-like gas with rotational and
+  vibrational levels and superelastic collisions; within LoKI-B's own discretisation error.
 - A Numerics section in the docs (header and sidebar): an overview of the model's equations
   (`docs/src/content/docs/numerics/index.mdx`, with the main cards) and one page per module in
   the order of the model (starlight-theme's `methodcard: { pages: true }`, theme 0.7.4).
@@ -78,6 +88,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The docstrings render on the API pages: code spans instead of reST roles such as `:func:`.
 - `merge_markers`: the docstring gives the group size the code uses, `max(3, ceil(2 N / target))`.
+- `solve_eedf`: spatial growth converges with strong ionization (a secant step on `alpha/N`) and
+  on its own grid search (done with temporal growth, then spatial growth on the chosen grid);
+  the exponent of `F0` in a cell is van Leer's mean of the one-sided slopes, so that a first
+  iterate with empty cells no longer blows up the collision integrals (1000 Td on 500 cells
+  did not converge).
 
 ## [0.3.0] - 2026-10-21
 
