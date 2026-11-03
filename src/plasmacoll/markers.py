@@ -1,9 +1,9 @@
-"""Marker storage that :meth:`~plasmacoll.mcc.MonteCarloCollisions.collide_species` works on.
+"""Marker storage that `plasmacoll.mcc.MonteCarloCollisions.collide_species` works on.
 
 Any object with ``positions``, ``velocities`` and ``weights`` arrays and
-``remove``/``add`` methods (the :class:`MarkerSet` protocol) can be collided,
+``remove``/``add`` methods (the `MarkerSet` protocol) can be collided,
 so a particle-in-cell code can pass its own particle containers through a thin
-adapter. :class:`ParticleArrays` is a simple implementation that keeps the
+adapter. `ParticleArrays` is a simple implementation that keeps the
 markers in three arrays and compacts them on removal.
 """
 
@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 import cunumpy as xp
+from methodcard import method
 
 from plasmacoll._types import Array
 from plasmacoll.constants import ELEMENTARY_CHARGE
@@ -107,7 +108,7 @@ class ParticleArrays:
             num: The number of markers.
             mass: Particle mass in kg.
             temperature: Temperature ``kT`` in eV; see
-                :func:`plasmacoll.constants.kelvin_to_ev`.
+                `plasmacoll.constants.kelvin_to_ev`.
             weight: Physical particles per marker.
             drift: Mean velocity in m/s.
             ndim: Number of position components.
@@ -154,6 +155,12 @@ class ParticleArrays:
         energy = 0.5 * mass * xp.sum(self.weights * xp.sum(self.velocities**2, axis=1))
         return float(energy) / (total * ELEMENTARY_CHARGE)
 
+    @method(
+        equations={
+            "temperature": r"kT = \frac{m}{3e}\,\frac{\sum_i w_i |\mathbf v_i - \mathbf u|^2}{\sum_i w_i}, \qquad \mathbf u = \frac{\sum_i w_i \mathbf v_i}{\sum_i w_i}",
+        },
+        assumptions=(r"weights $w_i$; zero without markers",),
+    )
     def temperature(self, mass: float) -> float:
         """Return the kinetic temperature ``kT`` in eV about the mean (0 if empty)."""
         total = self.total_weight

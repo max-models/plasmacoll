@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from methodcard import method
+
 from plasmacoll.cross_sections import CrossSection
 
 __all__ = [
@@ -17,7 +19,7 @@ __all__ = [
     "CollisionProcess",
 ]
 
-#: The collision kinds :class:`~plasmacoll.mcc.MonteCarloCollisions` implements.
+#: The collision kinds `plasmacoll.mcc.MonteCarloCollisions` implements.
 PROCESS_KINDS = (
     "elastic",
     "backscatter",
@@ -91,6 +93,36 @@ _CONSUMING_KINDS = (
 )
 
 
+@method(
+    equations={
+        "centre_of_mass": r"\mathbf V = \frac{m\mathbf v + M\mathbf w}{m + M}, \qquad \mathbf g = \mathbf v - \mathbf w, \qquad \mathbf v = \mathbf V + \frac{M}{m + M}\,\mathbf g, \qquad \mu = \frac{mM}{m + M}",
+        "scattering": r"g'^2 = \max\Big(g^2 - \frac{2e\,\Delta E}{\mu},\ 0\Big), \qquad \mathbf v' = \mathbf V + \frac{M}{m + M}\,g'\,\hat{\boldsymbol\Omega}(\chi, \phi)",
+        "backscatter": r"\mathbf v' = \mathbf V - \frac{M}{m + M}\,\mathbf g \qquad (= \mathbf w \text{ for } m = M)",
+        "electron_impact_ionization": r"E_r = \max\big(\tfrac12 m_e g^2 - e\,\Delta E,\ 0\big), \qquad \mathbf v_p = \mathbf w + \sqrt{\frac{2(1 - f)E_r}{m_e}}\,\hat{\boldsymbol\Omega}_p, \qquad \mathbf v_s = \mathbf w + \sqrt{\frac{2fE_r}{m_e}}\,\hat{\boldsymbol\Omega}_s",
+        "energy_sharing": r"f = \tfrac12 \ (\text{equal}), \qquad f = R \ (\text{uniform}), \qquad f = \frac{E_s}{E_r}, \ E_s = w\tan\Big(R\arctan\frac{E_r}{2w}\Big) \ (\text{Opal}, \ p(E_s) \propto \frac{1}{1 + (E_s/w)^2} \text{ on } [0, E_r/2])",
+        "ion_impact_ionization": r"E_r = \max\big(\tfrac12\mu g^2 - e\,\Delta E,\ 0\big), \quad \mathbf g' = \sqrt{\frac{2(1 - f)E_r}{\mu}}\,\hat{\mathbf g}, \quad \mathbf v' = \mathbf V + \frac{M}{m + M}\mathbf g', \quad \mathbf v_{B^+} = \mathbf V - \frac{m}{m + M}\mathbf g', \quad \mathbf v_e = \mathbf V + \sqrt{\frac{2fE_r}{m_e}}\,\hat{\boldsymbol\Omega}_\mathrm{iso}",
+        "detachment": r"E_e = \max\big(\tfrac12\mu g^2 - e\,\Delta E,\ 0\big), \qquad \mathbf v_e = \mathbf V + \sqrt{\frac{2E_e}{m_e}}\,\hat{\boldsymbol\Omega}_\mathrm{iso}",
+        "stripping": r"\mathbf v_\mathrm{projectile} = \mathbf v, \qquad \mathbf v_e = \mathbf v \ \text{(one marker of weight } q\,W), \qquad \mathbf v_{B^+} = \mathbf w",
+        "beam_ionization": r"\mathbf v' = \mathbf v, \quad \mathbf v_{B^+} = \mathbf w, \quad \mathbf v_e = \mathbf w + \sqrt{\frac{2E}{m_e}}\,\hat{\boldsymbol\Omega}_\mathrm{iso}, \quad E = w\tan\Big(R\arctan\frac{E_{\max}}{w}\Big), \quad E_{\max} = 2m_e g^2",
+        "energy_loss": r"\Delta E = \begin{cases} 0 & \text{elastic, backscatter, (dissociative) attachment, charge transfer, stripping, beam ionization} \\ \texttt{energy\_loss}, \text{ else the table threshold} & \text{the other kinds} \end{cases}",
+    },
+    assumptions=(
+        r"the kinematics `MonteCarloCollisions.collide` and `collide_now` apply, in the centre-of-mass frame of the marker ($m$, $\mathbf v$, weight $W$) and a neutral ($M$, $\mathbf w$) sampled from its background",
+        r"$\hat{\mathbf g} = \mathbf g / g$ ($\hat{\mathbf z}$ where $g = 0$); $\hat{\boldsymbol\Omega}$ isotropic, or at the angle $\chi$ of the `scattering` model about $\hat{\mathbf g}$ with a uniform azimuth $\phi$; $R$ uniform in $[0, 1)$",
+        r"elastic, excitation and dissociation conserve energy and momentum exactly; dissociation may create a `fragment` at $\mathbf w$",
+        r"electron-impact ionization (the incident species is the product electron): exact in the neutral's frame, the ion recoil $O(m_e/M)$ dropped; ion and fragment start at $\mathbf w$",
+        r"ion-impact ionization: energy and momentum up to the electron's momentum, $O(\sqrt{m_e/M})$; the ions keep $\hat{\mathbf g}$, the electron is isotropic, `scattering` is not used",
+        r"attachment and dissociative attachment remove the electron and create the negative ion (and fragment) at $\mathbf w$; charge transfer removes the incident, with an optional ion at $\mathbf w$ and neutral at $\mathbf v$",
+        r"detachment: the neutral fragments are not tracked, the electron takes the whole residual energy",
+        r"stripping: momentum exact when $m = m_\mathrm{projectile} + q\,m_e$ ($q$ = `charge_change`), binding energies neglected; beam ionization drops the target's and the electron's recoil",
+        r"products take the position and weight of the incident marker; a collision of the ionizing, attaching or dissociating kinds consumes one neutral",
+    ),
+    references=(
+        "[Vahedi and Surendra, Comput. Phys. Commun. 87, 179 (1995)](https://doi.org/10.1016/0010-4655(94)00171-W)",
+        "[Opal, Peterson and Beaty, J. Chem. Phys. 55, 4100 (1971)](https://doi.org/10.1063/1.1676707)",
+    ),
+    components=("plasmacoll.mcc.scattering_cosine",),
+)
 @dataclass(frozen=True)
 class CollisionProcess:
     """One collision process of an incident species with a neutral background.
@@ -110,23 +142,23 @@ class CollisionProcess:
     anisotropic model it must be the integral elastic cross section.
 
     Attributes:
-        kind: One of :data:`PROCESS_KINDS`.
-        background: The name of the :class:`~plasmacoll.background.NeutralBackground`.
+        kind: One of `PROCESS_KINDS`.
+        background: The name of the `plasmacoll.background.NeutralBackground`.
         cross_section: The cross section against energy.
         name: A unique name for diagnostics; ``"<kind>:<background>"`` if empty.
         energy_loss: Energy in eV lost by excitation, ionization and detachment;
             the threshold of the cross section if None.
-        energy_frame: One of :data:`ENERGY_FRAMES`.
-        products: Product species by role, see :data:`PRODUCT_ROLES`, e.g.
+        energy_frame: One of `ENERGY_FRAMES`.
+        products: Product species by role, see `PRODUCT_ROLES`, e.g.
             ``{"electron": "e", "ion": "Ar+"}`` for ionization.
-        energy_sharing: One of :data:`ENERGY_SHARING`, for ionization.
+        energy_sharing: One of `ENERGY_SHARING`, for ionization.
             ``"opal"`` samples the secondary electron's energy from the
             Opal-Peterson-Beaty distribution ``1 / (1 + (E_s / w)^2)``.
         sharing_energy: The parameter ``w`` in eV of ``"opal"`` sharing, of
             order the ionization energy (e.g. 10.0 for argon, 8.3 for H2); for
             ``beam_ionization`` the width of the ejected electron's energy
             distribution (required with an ``electron`` product).
-        scattering: One of :data:`SCATTERING_MODELS`.
+        scattering: One of `SCATTERING_MODELS`.
         charge_change: For ``stripping``, the change of the projectile's charge
             in e: 1 for single stripping (``H- -> H``, ``H -> H+``), 2 for
             double stripping (``H- -> H+``), -1 for electron capture

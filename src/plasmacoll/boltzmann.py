@@ -1,10 +1,10 @@
 """A two-term Boltzmann solver for electrons in a gas mixture in a uniform DC field.
 
-:func:`solve_eedf` computes the steady electron energy distribution in a
-reduced field ``E/N`` from the same :class:`~plasmacoll.process.CollisionProcess`
+`solve_eedf` computes the steady electron energy distribution in a
+reduced field ``E/N`` from the same `plasmacoll.process.CollisionProcess`
 objects the Monte Carlo collisions use, and from it the mean energy, the
 reduced mobility ``mu N`` and diffusion coefficient ``D N`` and the rate
-coefficient of every process. :func:`swarm_table` repeats this over a range of
+coefficient of every process. `swarm_table` repeats this over a range of
 fields and tabulates the results against the mean energy, the form fluid and
 global models look them up in. Every model then gets transport and rates
 consistent with the cross sections of the particle simulation.
@@ -35,7 +35,7 @@ that every electron removed by a collision reappears in another cell: the
 discretisation conserves the particles exactly.
 
 The solver runs on the host with NumPy, like the rate tables of
-:mod:`plasmacoll.rates`; the cross sections may live on either backend.
+`plasmacoll.rates`; the cross sections may live on either backend.
 Superelastic collisions and the gas temperature of the inelastic processes are
 not included, and the electron energy of every table is taken in the gas
 frame (the difference to the centre-of-mass frame is of order ``m_e / M``).
@@ -51,6 +51,7 @@ from typing import Any
 import cunumpy as xp
 import numpy as np
 import scope_profiler as sp
+from methodcard import ConvergenceProblem, method
 
 from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll._types import Array
@@ -87,6 +88,24 @@ _TARGET_DECADES = 15.0
 _TINY = 1.0e-300
 
 
+@method(
+    equations={
+        "mobility": r"\mu N = -\frac{\gamma}{3}\int \frac{\varepsilon}{\tilde\sigma_m}\,\frac{dF_0}{d\varepsilon}\,d\varepsilon, \qquad DN = \frac{\gamma}{3}\int \frac{\varepsilon}{\tilde\sigma_m}\,F_0\,d\varepsilon",
+        "mean_energy": r"\langle\varepsilon\rangle = \int \varepsilon^{3/2} F_0\,d\varepsilon, \qquad k_j = \gamma\int \varepsilon\,\sigma_j F_0\,d\varepsilon",
+        "townsend": r"\Big(\frac{\alpha}{N}\Big)^2 DN - \frac{\alpha}{N}\,\mu N\,\frac{E}{N} + \frac{\bar\nu}{N} = 0 \quad \text{(the smaller root)}, \qquad \frac{\bar\nu}{N} = \sum_\mathrm{iz} x_j k_j - \sum_\mathrm{att} x_j k_j",
+        "derived": r"w = \mu N\,\frac{E}{N}, \qquad \epsilon_k = \frac{DN}{\mu N}, \qquad f(\varepsilon) = \varepsilon^{1/2} F_0",
+        "power": r"\Big(\frac{E}{N}\Big)^2 \mu N = \gamma\int \varepsilon^2\sigma_\varepsilon\Big(F_0 + kT\frac{dF_0}{d\varepsilon}\Big)d\varepsilon + \sum_j x_j\,\Delta E_j\,k_j + P_\mathrm{growth}",
+        "discrete": r"\mu N = -\frac{\gamma}{3}\sum_{k} \frac{\varepsilon_{k+1/2}}{\tilde\sigma_m}(F_{k+1} - F_k), \quad DN = \frac{\gamma}{3}\sum_k \frac{\varepsilon_k}{\tilde\sigma_m(\varepsilon_k)} F_k h, \quad \langle\varepsilon\rangle = \sum_k F_k\,\tfrac25\Delta\big(\varepsilon^{5/2}\big)_k",
+    },
+    assumptions=(
+        r"$k_j$ per molecule of the process's own gas, also for elastic processes; the discriminant of $\alpha/N$ clipped at zero",
+        r"the power gained in spatial growth is $\frac{E}{N}\big(\frac{E}{N}\mu N - \frac{\alpha}{N} DN\big)$; $P_\mathrm{growth}$ is the energy the attached electrons take plus $\frac{\bar\nu}{N}\langle\varepsilon\rangle$ (temporal) or minus the spatial source's energy moment",
+        r"`power_balance` is (gained - lost) / gained, a measure of the discretisation error; NaN without a field",
+    ),
+    references=(
+        "[Hagelaar and Pitchford, Plasma Sources Sci. Technol. 14, 722 (2005)](https://doi.org/10.1088/0963-0252/14/4/011)",
+    ),
+)
 @dataclass(frozen=True)
 class BoltzmannSolution:
     """The steady electron energy distribution in a field and what follows from it.
@@ -94,7 +113,7 @@ class BoltzmannSolution:
     Attributes:
         reduced_field: ``E/N`` in Td.
         gas_temperature: ``kT`` of the gas in eV.
-        growth: The growth model, one of :data:`GROWTH_MODELS`.
+        growth: The growth model, one of `GROWTH_MODELS`.
         energy: The cell centres in eV.
         energy_edges: The cell boundaries in eV, one more than ``energy``.
         eepf: The electron energy probability function ``F0`` in eV^-3/2 at
@@ -160,6 +179,17 @@ class BoltzmannSolution:
         return (self.power["field"] - lost) / self.power["field"]
 
 
+@method(
+    equations={
+        "interpolation": r"\ln q(\langle\varepsilon\rangle) \text{ linear in } \ln\langle\varepsilon\rangle; \quad q \text{ itself linear in } \ln\langle\varepsilon\rangle \text{ for a column with negative values}",
+        "temperature": r"T_e = \tfrac23\,\langle\varepsilon\rangle",
+    },
+    assumptions=(
+        r"clamped to the table; a zero stays zero; refuses a mean energy that does not increase with the field",
+        r"$T_e$ the temperature of `rate_table`, the effective electron temperature of fluid and global models",
+    ),
+    components=("plasmacoll.boltzmann.solve_eedf",),
+)
 @dataclass(frozen=True)
 class SwarmTable:
     """Solutions over a range of reduced fields, tabulated against the mean energy.
@@ -198,7 +228,7 @@ class SwarmTable:
     def interpolate(self, quantity: str, mean_energy: float | Array) -> np.ndarray:
         """Return ``quantity`` at ``mean_energy`` (eV), clamped to the table.
 
-        Interpolates in log-log, as :class:`~plasmacoll.rates.RateTable` does
+        Interpolates in log-log, as `plasmacoll.rates.RateTable` does
         (a zero stays zero), and linearly in the logarithm of the mean energy
         for a column with negative values such as an attachment-dominated
         Townsend coefficient.
@@ -234,7 +264,7 @@ class SwarmTable:
         return np.where(value <= tiny * 10, 0.0, value)
 
     def rate_table(self, name: str) -> RateTable:
-        """Return the rate coefficient of process ``name`` as a :class:`RateTable`.
+        """Return the rate coefficient of process ``name`` as a `RateTable`.
 
         The table's temperature is ``2/3`` of the mean energy, the effective
         electron temperature of fluid and global models.
@@ -735,6 +765,66 @@ def _mixture(
     return fractions, masses
 
 
+def _reid_problem() -> ConvergenceProblem:
+    """Reid's ramp model gas on a fixed grid, against a 1600-cell solution.
+
+    Reid, Aust. J. Phys. 32, 231 (1979): a constant elastic cross section of 6 A^2
+    and an excitation of 10 (eps - 0.2) A^2/eV, M = 4 u, T = 0, at 12 Td.
+    """
+    from plasmacoll.constants import ATOMIC_MASS
+    from plasmacoll.cross_sections import CrossSection
+
+    ramp = CrossSection(energy=[0.2, 1000.2], sigma=[0.0, 1.0e-16], threshold=0.2)
+    processes = [
+        CollisionProcess("elastic", "gas", CrossSection.constant(6.0e-20)),
+        CollisionProcess("excitation", "gas", ramp),
+    ]
+    gas = [NeutralBackground("gas", 1.0e22, 0.0, 4.0 * ATOMIC_MASS)]
+    top = 3.0
+
+    def mean_energy(cells: int) -> float:
+        solution = solve_eedf(processes, gas, 12.0, num_cells=cells, max_energy=top)
+        return solution.mean_energy
+
+    reference = mean_energy(1600)
+
+    def error(step: float) -> float:
+        return abs(mean_energy(round(top / step)) - reference) / reference
+
+    return ConvergenceProblem(error, steps=[top / 40, top / 80, top / 160])
+
+
+@method(
+    equations={
+        "boltzmann": r"\frac{d}{d\varepsilon}\Big(W F_0 - D\,\frac{dF_0}{d\varepsilon}\Big) = S, \qquad \int \varepsilon^{1/2} F_0\,d\varepsilon = 1",
+        "coefficients": r"W = -\gamma\,\varepsilon^2 \sigma_\varepsilon, \qquad D = \frac{\gamma}{3}\Big(\frac{E}{N}\Big)^2 \frac{\varepsilon}{\tilde\sigma_m} + \gamma\,kT\,\varepsilon^2 \sigma_\varepsilon, \qquad \gamma = \sqrt{\frac{2e}{m_e}}",
+        "cross_sections": r"\sigma_\varepsilon = \sum_\mathrm{elastic} x_j\,\frac{2m_e}{M_j}\,\sigma_j, \qquad \sigma_m = \sum_\mathrm{all} x_j \sigma_j, \qquad \tilde\sigma_m = \begin{cases} \max\Big(\sigma_m + \dfrac{\bar\nu}{N\gamma\varepsilon^{1/2}},\ 0.01\,\sigma_m\Big) & \text{temporal growth} \\ \sigma_m & \text{spatial growth} \end{cases}",
+        "growth": r"S \mathrel{+}= -\frac{\bar\nu}{N}\varepsilon^{1/2} F_0 \ \text{(temporal)}; \qquad W \mathrel{+}= -\frac{\gamma}{3}\frac{E}{N}\frac{\alpha}{N}\frac{\varepsilon}{\sigma_m}, \quad S \mathrel{+}= \frac{\gamma}{3}\frac{\alpha}{N}\Big(\frac{E}{N}\frac{\varepsilon}{\sigma_m}\frac{dF_0}{d\varepsilon} + \frac{\alpha}{N}\frac{\varepsilon}{\sigma_m}F_0\Big) \ \text{(spatial)}",
+        "flux": r"J_{k+1/2} = \frac{D}{h}\big[B(-z)\,F_k - B(z)\,F_{k+1}\big], \qquad z = \frac{Wh}{D}, \qquad B(z) = \frac{z}{e^z - 1}",
+        "collisions": r"F_0(\varepsilon) = F_k\,e^{s_k(\varepsilon - \varepsilon_k)} \text{ in cell } k, \qquad q_n = \gamma\,\varepsilon_n \sigma(\varepsilon_n)\,\omega_n\,e^{s_k(\varepsilon_n - \varepsilon_k)}, \qquad A_{kk} \mathrel{+}= x_j\sum_{n \in k} q_n",
+        "kernel": r"K_{cn}^\mathrm{uniform} = \frac{2\,\big|[\varepsilon_{c-1/2}, \varepsilon_{c+1/2}] \cap [0, r]\big|}{r}, \qquad K_{cn}^\mathrm{Opal} = G(\varepsilon_{c+1/2}) - G(\varepsilon_{c-1/2}) + G(r - \varepsilon_{c-1/2}) - G(r - \varepsilon_{c+1/2}), \qquad G(E) = \frac{\arctan(\min(E, r/2)/w)}{\arctan(r/2w)}, \quad r = \varepsilon_n - \Delta E",
+        "normalisation": r"\sum_k w_k F_k = 1, \qquad w_k = \tfrac23\big(\varepsilon_{k+1/2}^{3/2} - \varepsilon_{k-1/2}^{3/2}\big)",
+    },
+    order=2,
+    assumptions=(
+        r"two-term expansion in a uniform DC field; $x_j$ the mole fractions from the mixture's densities; $kT$ the density-weighted gas temperature unless given",
+        r"excitation and dissociation move electrons down by $\Delta E$ (into the cell of $\varepsilon - \Delta E$); ionization replaces one electron by two sharing $\varepsilon - \Delta E$ (equal: the cell of $(\varepsilon - \Delta E)/2$, twice; uniform and Opal: the kernel $K$, whose columns sum to 2); attachment removes them: the columns of the operator sum to zero, so particles are conserved exactly",
+        r"uniform grid of $N$ = `num_cells` (200) cells, $F_k$ at the centres; $B(z) = 1 - z/2$ for $|z| < 10^{-10}$, $D$ floored at $10^{-300}$; no flux through $\varepsilon = 0$ and the grid end",
+        r"collision integrals by 3-point Gauss-Legendre on the sub-intervals between the edges, table energies, threshold and the edges shifted by $\Delta E$ (or $2\varepsilon + \Delta E$ for equal sharing); $s_k$ by central differences of $\ln\max(F, 10^{-300})$, clipped to $\pm 50/h$",
+        r"spatial growth: the gradient term split half and half to the cells next to each edge, the $(\alpha/N)^2$ term diagonal",
+        r"the first row replaced by the normalisation; a dense solve per iteration, negative values clipped; iterated (damped when the error grows) until $\sum_k |\Delta F_k| w_k <$ `rtol` ($10^{-8}$)",
+        r"without `max_energy` the grid end is adjusted (from 10 eV, at most 40 times) until $F_0$ falls by 10 to 20 decades across the grid",
+        r"not included: superelastic collisions, the gas temperature in the inelastic terms, electron-electron collisions, the $O(m_e/M)$ frame correction of table energies; elastic processes with the momentum-transfer cross section (isotropic) only",
+        r"the order is that of the mean energy on a fixed grid (Reid's ramp model)",
+    ),
+    references=(
+        "[Hagelaar and Pitchford, Plasma Sources Sci. Technol. 14, 722 (2005)](https://doi.org/10.1088/0963-0252/14/4/011)",
+        "[Scharfetter and Gummel, IEEE Trans. Electron Devices 16, 64 (1969)](https://doi.org/10.1109/T-ED.1969.16566)",
+        "Reid, Aust. J. Phys. 32, 231 (1979)",
+    ),
+    components=("plasmacoll.boltzmann.BoltzmannSolution",),
+    problem=_reid_problem,
+)
 @sp.profile("plasmacoll.solve_eedf", tags=PROFILE_TAGS)
 def solve_eedf(
     processes: Sequence[CollisionProcess],
@@ -872,11 +962,11 @@ def swarm_table(
     """Solve at each reduced field (Td) and tabulate the results.
 
     Args:
-        processes: The electron-impact processes, as for :func:`solve_eedf`.
-        mixture: The gases, as for :func:`solve_eedf`.
+        processes: The electron-impact processes, as for `solve_eedf`.
+        mixture: The gases, as for `solve_eedf`.
         reduced_fields: ``E/N`` in Td, increasing.
-        gas_temperature: ``kT`` of the gas in eV, as for :func:`solve_eedf`.
-        **options: Further keyword arguments of :func:`solve_eedf`.
+        gas_temperature: ``kT`` of the gas in eV, as for `solve_eedf`.
+        **options: Further keyword arguments of `solve_eedf`.
     """
     fields = np.asarray(xp.to_numpy(xp.asarray(reduced_fields, dtype=float)))
     if fields.ndim != 1 or fields.size < 2 or np.any(np.diff(fields) <= 0.0):

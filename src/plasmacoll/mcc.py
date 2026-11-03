@@ -55,8 +55,8 @@ process's ``scattering`` model about the incident direction:
     move at the projectile's velocity, so momentum is conserved exactly when
     the incident mass is the product's plus the electrons'. The optional
     ``ion`` product, the ionized target, starts with the neutral's velocity.
-    :func:`~plasmacoll.charge_states.stripping_processes` builds these
-    processes from a :class:`~plasmacoll.charge_states.ChargeStateTransitions`,
+    `plasmacoll.charge_states.stripping_processes` builds these
+    processes from a `plasmacoll.charge_states.ChargeStateTransitions`,
     so that the markers and the fractions use the same cross sections.
 ``beam_ionization``
     A fast projectile ionizes the target, ``X + B -> X + B+ + e``, and keeps its
@@ -74,11 +74,11 @@ process's ``scattering`` model about the incident direction:
 Products take the position and weight of the incident marker, which conserves
 charge and particle number marker by marker, so markers may have any weights.
 A code with one fixed weight per species must give species that exchange
-particles the same weight; :mod:`plasmacoll.population` splits and merges
+particles the same weight; `plasmacoll.population` splits and merges
 markers to control their number.
 
 The targets are Maxwellian backgrounds. A background with a
-:class:`~plasmacoll.background.DynamicProfile` follows a density set before
+`plasmacoll.background.DynamicProfile` follows a density set before
 every step, e.g. that of a tracked plasma species on a grid, which makes that
 species a target in the test-particle sense: ``detachment`` of H- by the
 electrons (``e + H- -> H + 2e``), or mutual neutralization ``H+ + H- -> H + H``
@@ -99,6 +99,7 @@ from typing import Any, NamedTuple
 import cunumpy as xp
 import numpy as np
 import scope_profiler as sp
+from methodcard import Rule, method
 
 from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll._types import Array
@@ -167,7 +168,7 @@ class MCCResult:
         diagnostics: The collision counters.
         consumed: The background particles removed by the collisions, per
             background name: one batch per consuming process
-            (:attr:`~plasmacoll.process.CollisionProcess.consumes_neutral`)
+            (`plasmacoll.process.CollisionProcess.consumes_neutral`)
             with the positions of the events, the velocities the neutrals had
             and the weights (physical particles) taken from the gas. What a
             depleting gas model subtracts from its density.
@@ -221,6 +222,56 @@ def _isotropic_directions(rng: Any, num: int) -> Array:
     )
 
 
+def _scattering_cosine_rules() -> dict:
+    """The SymPy rules of `scattering_cosine` (for the tests)."""
+    import sympy
+
+    energy, uniform = sympy.symbols("energy uniform", positive=True)
+    scaled = 4 * energy / sympy.Float(_HARTREE_EV)
+    xi = scaled / (1 + scaled)
+
+    def model(name: str):
+        def call(uniform: float, energy: float = 1.0) -> float:
+            cosine = scattering_cosine(
+                name, xp.asarray([energy]), xp.asarray([uniform])
+            )
+            return float(xp.to_numpy(cosine)[0])
+
+        return call
+
+    ranges = {"energy": (0.1, 100.0), "uniform": (0.0, 1.0)}
+    return {
+        "isotropic": Rule(1 - 2 * uniform, model("isotropic"), ranges),
+        "vahedi_surendra": Rule(
+            (2 + energy - 2 * (1 + energy) ** uniform) / energy,
+            model("vahedi_surendra"),
+            ranges,
+        ),
+        "okhrimovskyy": Rule(
+            1 - 2 * uniform * (1 - xi) / (1 + xi * (1 - 2 * uniform)),
+            model("okhrimovskyy"),
+            ranges,
+        ),
+    }
+
+
+@method(
+    equations={
+        "isotropic": r"\cos\chi = 1 - 2R",
+        "vahedi_surendra": r"\cos\chi = \frac{2 + E - 2(1 + E)^R}{E}, \qquad E \text{ in eV}",
+        "okhrimovskyy": r"\cos\chi = 1 - \frac{2R(1 - \xi)}{1 + \xi(1 - 2R)}, \qquad \xi = \frac{4\epsilon}{1 + 4\epsilon}, \quad \epsilon = \frac{E}{27.211386\ \mathrm{eV}}",
+    },
+    assumptions=(
+        r"each the inverse of the model's cumulative distribution in $\cos\chi$, $R$ uniform in $[0, 1)$",
+        r"$E$ clipped at zero; Vahedi-Surendra isotropic below $10^{-6}$ eV; both anisotropic forms clipped to $[-1, 1]$",
+        r"the scattering angle about the incident direction $\hat{\mathbf g}$, at the pre-collision lookup energy; the azimuth uniform",
+    ),
+    references=(
+        "[Vahedi and Surendra, Comput. Phys. Commun. 87, 179 (1995)](https://doi.org/10.1016/0010-4655(94)00171-W)",
+        "[Okhrimovskyy, Bogaerts and Gijbels, Phys. Rev. E 65, 037402 (2002)](https://doi.org/10.1103/PhysRevE.65.037402)",
+    ),
+    symbolic=lambda: _scattering_cosine_rules(),
+)
 def scattering_cosine(model: str, energy: Array, uniform: Array) -> Array:
     """Return the cosine of the scattering angle for incident ``energy`` (eV).
 
@@ -383,13 +434,13 @@ class MonteCarloCollisions:
     def _tabulate_bounds(self) -> None:
         """Tabulate the collision-frequency bound of every species and background.
 
-        Each background gets a table of its own, so that :meth:`collide` can
+        Each background gets a table of its own, so that `collide` can
         bound the processes on a slow gas and on a fast background (such as
         electrons) at their own relative speeds. A background with a fixed
         profile is tabulated at its largest density; one with a
-        :class:`~plasmacoll.background.DynamicProfile` at the reference
+        `plasmacoll.background.DynamicProfile` at the reference
         density, scaled by the profile's current ``max_factor`` in
-        :meth:`frequency_bound`, so the bound follows the profile without being
+        `frequency_bound`, so the bound follows the profile without being
         tabulated again.
         """
         self._frequency_tables = {}
@@ -469,6 +520,16 @@ class MonteCarloCollisions:
         self._backgrounds[background.name] = background
         self._tabulate_bounds()
 
+    @method(
+        equations={
+            "frequency": r"\nu_k(g, \mathbf x) = n_b f_b(\mathbf x)\,\sigma_k(E_k)\,g",
+            "lookup_energy": r"E_k = \frac{m_k g^2}{2e}, \qquad m_k = \begin{cases} \mu = \dfrac{mM}{m + M} & \text{center of mass} \\ m & \text{lab} \end{cases}",
+        },
+        assumptions=(
+            r"process $k$ on background $b$ of reference density $n_b$ and density profile $f_b$; $g$ the relative speed",
+            r"without a density factor the largest the background reaches, $F_b$ = `max_factor`: the bound the null-collision method needs",
+        ),
+    )
     def process_frequency(
         self,
         species: str,
@@ -502,6 +563,19 @@ class MonteCarloCollisions:
             total = total + self.process_frequency(species, process, relative_speed)
         return total
 
+    @method(
+        equations={
+            "bound": r"\nu_{\max} = s \sum_b F_b \max_{g \le g_{\max,b}} \sum_{k \in b} n_b\,\sigma_k(E_k)\,g",
+            "table": r"\max_{g \le g_{\max,b}} \nu_b(g) \approx \max\Big(\max_{g_i \le g_{\max,b}} \nu_b(g_i),\ \nu_b(g_{\max,b})\Big)",
+        },
+        assumptions=(
+            r"$s$ = `bound_safety` (1.02) covers the maxima of a piecewise-linear $\sigma$ times $g$ between grid speeds; 1 is exact for piecewise-constant cross sections",
+            r"the running maximum is tabulated per species and background on 4096 (`num_bound_samples`) logarithmic speeds from $10^{-8}$ times the speed of the largest table energy, merged with the speeds of every table point and $g_\mathrm{th}(1 + 10^{-12})$ of every threshold",
+            r"beyond the table every $\sigma$ is constant and $\nu \propto g$, which the direct evaluation at $g_{\max,b}$ covers",
+            r"a sum of per-background bounds bounds the sum; a fixed profile is tabulated at its largest density, a `DynamicProfile` at the reference density and scaled by its current `max_factor` $F_b$",
+        ),
+        components=("plasmacoll.mcc.MonteCarloCollisions.process_frequency",),
+    )
     def frequency_bound(
         self, species: str, max_relative_speed: float | Mapping[str, float]
     ) -> float:
@@ -923,6 +997,31 @@ class MonteCarloCollisions:
                     consumed=consumed,
                 )
 
+    @method(
+        equations={
+            "max_speed": r"g_{\max,b} = v_{\max} + |\mathbf u_b| + 8\sqrt{\frac{e\,T_b F_{T,b}}{M_b}}, \qquad v_{\max} = \max_i |\mathbf v_i|",
+            "probability": r"P = 1 - e^{-\nu_{\max}\Delta t}",
+            "selection": r"\sum_{j<k}\nu_j \le R\,\nu_{\max} < \sum_{j\le k}\nu_j \ \Rightarrow\ \text{process } k, \qquad R\,\nu_{\max} \ge \sum_j \nu_j \ \Rightarrow\ \text{null collision}",
+            "rate": r"P\,\frac{\nu_k}{\nu_{\max}} = \nu_k\Delta t + O\big((\nu_{\max}\Delta t)^2\big)",
+        },
+        assumptions=(
+            r"at most one collision per marker and step, so $\nu_{\max}\Delta t \ll 1$; warns once when $P$ exceeds `max_collision_probability` (0.1)",
+            r"with a NumPy generator the candidates are a binomial$(N, P)$ count and a uniform subset; other generators draw one number per marker",
+            r"each candidate draws one neutral velocity $\mathbf w$ per background and $R$ uniform in $[0, 1)$; the real frequencies use the density factor where the marker is (exact thinning)",
+            r"candidates whose total frequency exceeds $\nu_{\max}(1 + 10^{-9})$ are counted in `bound_violations` and warned about once: their rate is too low",
+            r"$F_{T,b}$ the largest temperature factor; eight thermal speeds leave about $10^{-15}$ per component for a faster neutral",
+        ),
+        references=(
+            "[Vahedi and Surendra, Comput. Phys. Commun. 87, 179 (1995)](https://doi.org/10.1016/0010-4655(94)00171-W)",
+            "Skullerud, J. Phys. D 1, 1567 (1968)",
+        ),
+        components=(
+            "plasmacoll.mcc.MonteCarloCollisions.frequency_bound",
+            "plasmacoll.mcc.MonteCarloCollisions.process_frequency",
+            "plasmacoll.background.NeutralBackground.sample_velocities",
+            "plasmacoll.process.CollisionProcess",
+        ),
+    )
     @sp.profile("plasmacoll.collide", tags=PROFILE_TAGS)
     def collide(
         self,
@@ -1035,7 +1134,7 @@ class MonteCarloCollisions:
 
         Args:
             species: Marker sets by species name, e.g.
-                :class:`~plasmacoll.markers.ParticleArrays`. Species without
+                `plasmacoll.markers.ParticleArrays`. Species without
                 processes are only receivers of products.
             dt: The time step in s, or one per incident species (e.g. the
                 cycle of a species pushed only every few steps).
@@ -1043,7 +1142,7 @@ class MonteCarloCollisions:
                 None); the others in ``species`` only receive products.
             consumed: If given, the neutrals the collisions consumed are
                 appended to it per background name (see
-                :attr:`MCCResult.consumed`), for a gas model that depletes.
+                `MCCResult.consumed`), for a gas model that depletes.
 
         Returns:
             The collision counters of every species that collided.
@@ -1086,6 +1185,15 @@ class MonteCarloCollisions:
             )
         return diagnostics
 
+    @method(
+        equations={
+            "attenuation": r"\frac{1}{\lambda} = \sum_k n_k(\mathbf x)\,\sigma_k(E_k), \qquad E_k = \frac{m_k v^2}{2e}",
+        },
+        assumptions=(
+            r"targets at rest: $g = |\mathbf v|$, their temperature and drift ignored, for markers much faster than the neutrals",
+        ),
+        components=("plasmacoll.mcc.MonteCarloCollisions.process_frequency",),
+    )
     def attenuation(self, species: str, positions: Array, velocities: Array) -> Array:
         """Return ``sum_k n_k(x) sigma_k(E)`` (1/m), the inverse mean free path.
 
@@ -1103,6 +1211,19 @@ class MonteCarloCollisions:
             total = total + self.process_frequency(species, process, speed, factor)
         return xp.where(speed > 0.0, total / safe, 0.0)
 
+    @method(
+        equations={
+            "choice": r"P(k) = \frac{\nu_k(g, \mathbf x)}{\sum_j \nu_j(g, \mathbf x)}",
+        },
+        assumptions=(
+            r"every given marker collides with a real process (no null collision); a draw that rounding leaves above the sum goes to the last process",
+            r"for event-driven transport: the free path is sampled from `attenuation` outside; raises where the attenuation is zero",
+        ),
+        components=(
+            "plasmacoll.mcc.MonteCarloCollisions.attenuation",
+            "plasmacoll.process.CollisionProcess",
+        ),
+    )
     @sp.profile("plasmacoll.collide_now", tags=PROFILE_TAGS)
     def collide_now(
         self,
@@ -1116,10 +1237,10 @@ class MonteCarloCollisions:
         """Collide the markers ``indices`` (all if None) now, each with a real process.
 
         For event-driven transport, where a marker is moved to the point of its
-        next collision (a free path sampled from :meth:`attenuation`) and then
+        next collision (a free path sampled from `attenuation`) and then
         collides for certain. The process is drawn in proportion to its
         frequency at the marker's position; the kinematics are those of
-        :meth:`collide`.
+        `collide`.
 
         Raises:
             ValueError: If ``velocities`` does not have three components, or a

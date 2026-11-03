@@ -1,13 +1,13 @@
 """Null-collision Monte Carlo collisions of charged particles with neutral gases.
 
 plasmacoll collides markers (positions, velocities and weights in NumPy or CuPy
-arrays, through :mod:`cunumpy`) with prescribed Maxwellian neutral backgrounds:
+arrays, through `cunumpy`) with prescribed Maxwellian neutral backgrounds:
 elastic and backscatter collisions, excitation, ionization, attachment,
 detachment, charge transfer, dissociation and the charge changes of fast beams, with cross sections from tables,
 LXCat files or functions (process sets for argon and sputtered metals in
-:mod:`plasmacoll.argon` and :mod:`plasmacoll.metals`, caesium in hydrogen in :mod:`plasmacoll.caesium`). It is the collision step of a particle-in-cell code,
-or with :class:`ZeroDReactor` a homogeneous reactor (optionally in an electric
-field) for testing cross-section sets. :func:`solve_eedf` solves the two-term
+`plasmacoll.argon` and `plasmacoll.metals`, caesium in hydrogen in `plasmacoll.caesium`). It is the collision step of a particle-in-cell code,
+or with `ZeroDReactor` a homogeneous reactor (optionally in an electric
+field) for testing cross-section sets. `solve_eedf` solves the two-term
 Boltzmann equation for the same processes, for rates and transport
 coefficients consistent with them.
 

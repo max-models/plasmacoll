@@ -1,7 +1,7 @@
 """A zero-dimensional (spatially homogeneous) reactor advanced by collisions and a field.
 
-:class:`ZeroDReactor` evolves the velocity distributions and densities of a
-set of species with :class:`~plasmacoll.mcc.MonteCarloCollisions`, optionally in
+`ZeroDReactor` evolves the velocity distributions and densities of a
+set of species with `plasmacoll.mcc.MonteCarloCollisions`, optionally in
 a uniform, constant electric field that accelerates the charged species
 (a swarm experiment); there is no position push and no boundary. It is the
 tool for testing a cross-section set or a reaction chain (rate coefficients,
@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 import cunumpy as xp
 import numpy as np
 import scope_profiler as sp
+from methodcard import method
 
 from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll.constants import ELEMENTARY_CHARGE
@@ -110,6 +111,22 @@ def _mean_velocity(markers: ParticleArrays) -> np.ndarray:
     return np.asarray(xp.to_numpy(mean), dtype=float)
 
 
+@method(
+    equations={
+        "kick": r"\mathbf v \mathrel{+}= \frac{qe\,\mathbf E}{m}\,\Delta t",
+        "step": r"\text{kick the charged species, collide every species, merge a species above } N_{\max} \text{ down to } \lfloor N_{\max}/2 \rfloor",
+        "density": r"n_s = \frac{\sum_i w_i}{V}",
+    },
+    assumptions=(
+        r"homogeneous: no position push and no boundary; a uniform, constant electric field",
+        r"products are added after every species has collided; the temperature is that of `ParticleArrays.temperature`",
+    ),
+    components=(
+        "plasmacoll.mcc.MonteCarloCollisions.collide",
+        "plasmacoll.population.merge_markers",
+        "plasmacoll.markers.ParticleArrays.temperature",
+    ),
+)
 class ZeroDReactor:
     """A homogeneous reactor of volume ``volume`` advanced by collisions and a field.
 
@@ -126,7 +143,7 @@ class ZeroDReactor:
             (e.g. ``{"e": -1, "Ar+": 1}``); species not listed are neutral.
             Needed for the species the field should accelerate.
         max_markers: Merge a species' markers down to half this number with
-            :func:`~plasmacoll.population.merge_markers` whenever it exceeds
+            `plasmacoll.population.merge_markers` whenever it exceeds
             it, conserving weight, momentum and energy; a number for every
             species or one per species name. None never merges.
         seed: Seed of the random directions of merged markers.

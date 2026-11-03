@@ -3,9 +3,9 @@
 Caesium evaporated into a negative-ion source drifts through the hydrogen
 plasma, where electrons ionize it, ``e + Cs -> Cs+ + 2e``, and it scatters on
 the H2 gas. The ionizing electrons are a background with a density ``n_e(x)``
-and a temperature ``T_e(x)`` (:func:`electron_background`), not markers: the
+and a temperature ``T_e(x)`` (`electron_background`), not markers: the
 ionization is a ``stripping`` process of the Cs marker on that background
-(:func:`caesium_ionization_process`), which turns the marker into a Cs+ of the
+(`caesium_ionization_process`), which turns the marker into a Cs+ of the
 same weight and does not track the new electron. The null-collision method
 samples the electron velocities from the Maxwellian of the local
 temperature, so the rate is ``n_e <sigma v>(T_e)`` at every marker.
@@ -38,6 +38,8 @@ from __future__ import annotations
 
 import math
 from typing import Any
+
+from methodcard import Rule, method
 
 from plasmacoll.background import NeutralBackground, Profile
 from plasmacoll.constants import ATOMIC_MASS, ELECTRON_MASS, ELEMENTARY_CHARGE
@@ -75,6 +77,20 @@ CS_H2_HARD_SPHERE_CROSS_SECTION = math.pi * (0.5 * (6.86e-10 + 2.89e-10)) ** 2
 _EPSILON_0 = 8.8541878128e-12
 
 
+@method(
+    equations={
+        "lotz": r"\sigma(E) = a\,\frac{\ln(E/P)}{E P}, \qquad P = 3.893906\ \mathrm{eV}, \quad a = 4.5\cdot10^{-14}\ \mathrm{cm^2\,eV^2}",
+        "peak": r"E_\mathrm{peak} = e_\mathrm{Euler}\,P \approx 10.6\ \mathrm{eV}, \qquad \sigma_{\max} \approx 1.1\cdot10^{-19}\ \mathrm{m}^2",
+    },
+    assumptions=(
+        r"the 6s electron only: the 5p shell and its autoionization are left out, a lower estimate above about 12 eV",
+    ),
+    references=(
+        "[Lotz, Z. Phys. 216, 241 (1968)](https://doi.org/10.1007/BF01392963)",
+        "NIST Atomic Spectra Database (ionization energy)",
+    ),
+    components=("plasmacoll.metals.lotz_cross_section",),
+)
 def caesium_ionization_cross_section(
     max_energy: float = 1.0e4, num: int = 400
 ) -> CrossSection:
@@ -141,6 +157,18 @@ def caesium_ionization_process(
     )
 
 
+@method(
+    equations={
+        "hard_spheres": r"\sigma = \pi d^2, \qquad d = \frac{d_\mathrm{Cs} + d_\mathrm{H_2}}{2} = \frac{6.86 + 2.89}{2}\ \text{\AA}",
+    },
+    assumptions=(
+        r"a placeholder: the geometric cross section, isotropic; $d_\mathrm{Cs}$ twice the van der Waals radius 3.43 Å, $d_\mathrm{H_2}$ the kinetic diameter",
+    ),
+    references=(
+        "[Mantina et al., J. Phys. Chem. A 113, 5806 (2009)](https://doi.org/10.1021/jp8111556)",
+        "Breck, Zeolite Molecular Sieves (1974)",
+    ),
+)
 def caesium_h2_elastic_process(background: str = "H2") -> CollisionProcess:
     """Return isotropic hard-sphere scattering of Cs on H2 (a placeholder).
 
@@ -157,6 +185,27 @@ def caesium_h2_elastic_process(background: str = "H2") -> CollisionProcess:
     )
 
 
+def _langevin_rules() -> dict:
+    """The SymPy rule of `langevin_rate_coefficient` (for the tests)."""
+    import sympy
+
+    alpha, mu = sympy.symbols("polarizability reduced_mass", positive=True)
+    e, eps0 = sympy.Float(ELEMENTARY_CHARGE), sympy.Float(_EPSILON_0)
+    rule = 2 * sympy.pi * sympy.sqrt(alpha * e**2 / (4 * sympy.pi * eps0 * mu))
+    ranges = {"polarizability": (1.0e-31, 1.0e-29), "reduced_mass": (1.0e-27, 1.0e-25)}
+    return {"langevin": Rule(rule, ranges=ranges)}
+
+
+@method(
+    equations={
+        "langevin": r"K_L = \sigma_L g = 2\pi\sqrt{\frac{\alpha e^2}{4\pi\varepsilon_0\mu}}",
+        "cross_section": r"\sigma_L(g) = \frac{2\pi}{g}\sqrt{\frac{\alpha e^2}{4\pi\varepsilon_0\mu}}",
+    },
+    assumptions=(
+        r"$\alpha$ the polarizability volume of the neutral (m$^3$), $\mu$ the reduced mass: capture in the polarization potential, independent of the speed",
+    ),
+    symbolic=lambda: _langevin_rules(),
+)
 def langevin_rate_coefficient(polarizability: float, reduced_mass: float) -> float:
     """Return the Langevin capture rate ``2 pi sqrt(alpha e^2 / (4 pi eps0 mu))`` (m^3/s).
 
@@ -177,6 +226,19 @@ def langevin_rate_coefficient(polarizability: float, reduced_mass: float) -> flo
     )
 
 
+@method(
+    equations={
+        "cross_section": r"\sigma(E) = \frac{K_L}{g}, \qquad K_L = 2\pi\sqrt{\frac{\alpha_\mathrm{H_2} e^2}{4\pi\varepsilon_0\mu}} \approx 1.49\cdot10^{-15}\ \mathrm{m^3/s}",
+    },
+    assumptions=(
+        r"Langevin capture with isotropic scattering, $\alpha_\mathrm{H_2} = 0.8045$ Å$^3$ (CRC Handbook), entered as a Maxwell-molecule cross section",
+        r"Cs$^+$ + H$_2$ charge transfer (endothermic by about 11.5 eV) and the ionization of Cs$^+$ (23.2 eV) left out",
+    ),
+    components=(
+        "plasmacoll.caesium.langevin_rate_coefficient",
+        "plasmacoll.cross_sections.CrossSection.maxwell_molecule",
+    ),
+)
 def caesium_ion_h2_elastic_process(background: str = "H2") -> CollisionProcess:
     """Return Langevin capture of Cs+ on H2 with isotropic scattering.
 
@@ -196,6 +258,20 @@ def caesium_ion_h2_elastic_process(background: str = "H2") -> CollisionProcess:
     )
 
 
+@method(
+    equations={
+        "ionization": r"\nu_\mathrm{iz}(\mathbf x) = n_e(\mathbf x)\,\langle\sigma v\rangle\big(T_e(\mathbf x)\big)",
+    },
+    assumptions=(
+        r"the electrons a Maxwellian background with profiles $n_e(\mathbf x)$, $T_e(\mathbf x)$, not markers; the ionization a `stripping` of the Cs marker into Cs$^+$ of the same weight, the new electron not tracked",
+        r"Cs scatters on H$_2$ as hard spheres, Cs$^+$ by Langevin capture",
+    ),
+    components=(
+        "plasmacoll.caesium.caesium_ionization_cross_section",
+        "plasmacoll.caesium.caesium_h2_elastic_process",
+        "plasmacoll.caesium.caesium_ion_h2_elastic_process",
+    ),
+)
 def caesium_collisions(
     electrons: NeutralBackground,
     gas: NeutralBackground,
@@ -204,14 +280,14 @@ def caesium_collisions(
 ) -> MonteCarloCollisions:
     """Return the collisions of ``Cs`` and ``Cs+`` markers in a hydrogen plasma.
 
-    ``Cs`` is ionized by ``electrons`` (see :func:`electron_background`) and
+    ``Cs`` is ionized by ``electrons`` (see `electron_background`) and
     scatters on ``gas``; ``Cs+`` scatters on ``gas``.
 
     Args:
         electrons: The electron background.
         gas: The H2 background.
         seed: Seed of the random stream.
-        **kwargs: Passed on to :class:`~plasmacoll.mcc.MonteCarloCollisions`.
+        **kwargs: Passed on to `plasmacoll.mcc.MonteCarloCollisions`.
     """
     return MonteCarloCollisions(
         {"Cs": CAESIUM_MASS, "Cs+": CAESIUM_MASS - ELECTRON_MASS},

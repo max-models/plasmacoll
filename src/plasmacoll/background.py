@@ -1,14 +1,14 @@
 """Neutral gas backgrounds: drifting Maxwellians, uniform or with spatial profiles.
 
-The density and the temperature of a :class:`NeutralBackground` can vary in
+The density and the temperature of a `NeutralBackground` can vary in
 space through a profile: any object with a ``max_factor`` and a call that
-returns the factor at marker positions (the :class:`Profile` protocol), such as
-the piecewise-linear :class:`DensityProfile` along one axis or a
-:class:`FunctionProfile` of all coordinates. To change a background in time
+returns the factor at marker positions (the `Profile` protocol), such as
+the piecewise-linear `DensityProfile` along one axis or a
+`FunctionProfile` of all coordinates. To change a background in time
 (gas heating, depletion), replace it with
-:meth:`~plasmacoll.mcc.MonteCarloCollisions.set_background`.
+`plasmacoll.mcc.MonteCarloCollisions.set_background`.
 
-A :class:`DynamicProfile` changes between collision steps without that: its
+A `DynamicProfile` changes between collision steps without that: its
 function and its bound are set anew before every step, e.g. from the density of
 a plasma species on a grid, which makes that species a collision target (the
 electrons of ``e + H- -> H + 2e``). The collision operator scales the
@@ -17,9 +17,9 @@ tabulating it again.
 
 A gas that the collisions deplete is the same thing with the density of the
 gas itself on the grid: the collision operator reports the neutrals each step
-consumed (:attr:`~plasmacoll.mcc.MCCResult.consumed`, per background, with
+consumed (`plasmacoll.mcc.MCCResult.consumed`, per background, with
 the positions and weights of the events), the gas model subtracts them from
-its density and refills, and the :class:`DynamicProfile` reads that density.
+its density and refills, and the `DynamicProfile` reads that density.
 """
 
 from __future__ import annotations
@@ -30,6 +30,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 import cunumpy as xp
+import numpy as np
+from methodcard import ConvergenceProblem, method
 
 from plasmacoll._types import Array
 from plasmacoll.constants import ELEMENTARY_CHARGE
@@ -57,6 +59,31 @@ class Profile(Protocol):
         ...
 
 
+def _density_profile_problem() -> ConvergenceProblem:
+    """A smooth profile sampled with spacing ``h``, against the function between."""
+    points = np.linspace(0.0, 2.0, 401)[:, None]
+    exact = 1.0 + 0.5 * np.sin(points[:, 0])
+
+    def error(step: float) -> float:
+        nodes = np.linspace(0.0, 2.0, round(2.0 / step) + 1)
+        profile = DensityProfile(0, nodes, 1.0 + 0.5 * np.sin(nodes))
+        return float(np.max(np.abs(xp.to_numpy(profile(xp.asarray(points))) - exact)))
+
+    return ConvergenceProblem(error, steps=[0.2, 0.1, 0.05, 0.025])
+
+
+@method(
+    equations={
+        "factor": r"f(\mathbf x) = f_i + \frac{f_{i+1} - f_i}{x_{i+1} - x_i}\,(x_a - x_i), \qquad x_i \le x_a \le x_{i+1}",
+        "density": r"n(\mathbf x) = n_b\,f(\mathbf x), \qquad F_b = \max_i f_i",
+    },
+    order=2,
+    assumptions=(
+        r"$x_a$ the position component `axis`; the end values outside the table",
+        r"$F_b$ bounds the density for the null-collision method",
+    ),
+    problem=_density_profile_problem,
+)
 @dataclass(frozen=True)
 class DensityProfile:
     """A piecewise-linear relative neutral density along one coordinate axis.
@@ -110,7 +137,7 @@ class FunctionProfile:
     the active backend and returns ``N`` factors (>= 0) that never exceed
     ``max_factor``. The collision operator uses ``max_factor`` as the bound of
     the null-collision method and counts the markers where it is exceeded in
-    :attr:`~plasmacoll.mcc.MCCDiagnostics.bound_violations`.
+    `plasmacoll.mcc.MCCDiagnostics.bound_violations`.
 
     Attributes:
         function: The factor at the given positions.
@@ -134,11 +161,11 @@ class DynamicProfile:
     """A factor that is set anew before every collision step.
 
     ``function`` takes the marker positions, shape ``(N, ndim)``, and returns
-    ``N`` factors (>= 0) up to ``max_factor``. :meth:`update` replaces either,
+    ``N`` factors (>= 0) up to ``max_factor``. `update` replaces either,
     e.g. with the interpolated density of a plasma species and its largest
     value on the grid. The collision operator reads ``max_factor`` when it
     collides, so a background with this profile needs no
-    :meth:`~plasmacoll.mcc.MonteCarloCollisions.set_background`; until the
+    `plasmacoll.mcc.MonteCarloCollisions.set_background`; until the
     first update the factor is zero and nothing collides with it.
 
     Args:
@@ -189,7 +216,7 @@ class DynamicProfile:
 
 
 def is_dynamic(profile: object) -> bool:
-    """Return whether ``profile`` is set anew between steps (a :class:`DynamicProfile`)."""
+    """Return whether ``profile`` is set anew between steps (a `DynamicProfile`)."""
     return bool(getattr(profile, "dynamic", False))
 
 
@@ -198,7 +225,7 @@ class NeutralBackground:
     """A drifting Maxwellian neutral gas.
 
     The density is ``density`` everywhere, or ``density * profile(x)`` with a
-    :class:`Profile`; ``density`` is then the reference density the profile's
+    `Profile`; ``density`` is then the reference density the profile's
     factors scale. The temperature is likewise ``temperature`` or
     ``temperature * temperature_profile(x)``. The gas flows with the mean
     velocity ``drift``.
@@ -263,6 +290,14 @@ class NeutralBackground:
         """Return the flow speed in m/s."""
         return math.sqrt(sum(component**2 for component in self.drift))
 
+    @method(
+        equations={
+            "velocity": r"\mathbf w = \mathbf u_b + \sqrt{\frac{e\,T_b\,f_{T,b}(\mathbf x)}{M}}\;\boldsymbol\xi, \qquad \boldsymbol\xi \sim \mathcal N(0, 1)^3",
+        },
+        assumptions=(
+            r"a drifting Maxwellian: $\mathbf u_b$ the drift, $T_b$ the temperature in eV, $f_{T,b}$ the temperature profile clipped at zero (1 without one)",
+        ),
+    )
     def sample_velocities(
         self, rng: Any, num: int, positions: Array | None = None
     ) -> Array:

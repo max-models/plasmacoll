@@ -9,13 +9,13 @@ rate coefficient of a process is
 with ``E = mu g^2 / 2`` the centre-of-mass energy and ``mu`` the reduced mass.
 Cross sections tabulated against the incident particle's energy in the target's
 rest frame (``energy_frame="lab"``) are looked up at ``E m / mu`` instead, with
-``m`` the incident mass. :class:`RateTable` tabulates ``K(T)`` once for models
+``m`` the incident mass. `RateTable` tabulates ``K(T)`` once for models
 that need it at many temperatures, such as global (0D) and fluid models.
 
-For any other electron energy distribution, :func:`eedf_rate_coefficient`
+For any other electron energy distribution, `eedf_rate_coefficient`
 integrates ``k = gamma int eps sigma(eps) F0(eps) deps`` over a tabulated
 energy probability function ``F0`` (eV^-3/2, normalised by
-``int eps^1/2 F0 deps = 1``, the convention of :func:`~plasmacoll.solve_eedf`),
+``int eps^1/2 F0 deps = 1``, the convention of `plasmacoll.solve_eedf`),
 with ``gamma = (2 e / m_e)^1/2``.
 """
 
@@ -26,6 +26,7 @@ from dataclasses import dataclass
 import cunumpy as xp
 import numpy as np
 import scope_profiler as sp
+from methodcard import ConvergenceProblem, Rule, method
 
 from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll._types import Array
@@ -38,6 +39,35 @@ __all__ = ["RateTable", "eedf_rate_coefficient", "rate_coefficient"]
 _LOW, _HIGH = 1.0e-6, 60.0
 
 
+def _rate_coefficient_problem() -> ConvergenceProblem:
+    """A constant cross section, against ``sigma sqrt(8 kT / (pi mu))``."""
+    sigma, mass, kt = 1.0e-19, 1.0e-27, 2.0
+    exact = sigma * np.sqrt(8.0 * kt * ELEMENTARY_CHARGE / (np.pi * mass))
+    span = np.log(_HIGH / _LOW)
+
+    def error(step: float) -> float:
+        rate = rate_coefficient(
+            CrossSection.constant(sigma), kt, mass, num=round(span / step) + 1
+        )
+        return float(abs(rate - exact) / exact)
+
+    return ConvergenceProblem(error, steps=[span / 50, span / 100, span / 200])
+
+
+@method(
+    equations={
+        "maxwellian": r"K(T) = \langle\sigma g\rangle = \sqrt{\frac{8}{\pi\mu}}\,(kT)^{-3/2}\int_{E_\mathrm{th}}^\infty \sigma(E)\,E\,e^{-E/kT}\,dE",
+        "lab_frame": r"\sigma_\mathrm{cm}(E) = \sigma_\mathrm{lab}\Big(E\,\frac{m}{\mu}\Big)",
+        "trapezoid": r"\int f\,dE \approx \sum_i \frac{E_{i+1} - E_i}{2}\,(f_i + f_{i+1}), \qquad E_i \in [10^{-6}kT,\ 60\,kT]",
+    },
+    order=2,
+    assumptions=(
+        r"Maxwellian relative velocities, $f \propto e^{-\mu g^2/2kT}$, and $E = \tfrac12\mu g^2$ (so $g^3 dg = 2E\,dE/\mu^2$)",
+        r"`num` (4000) logarithmic energies from $10^{-6}kT$ to $60\,kT$ plus the table energies and the threshold inside, cut at the threshold; the tail beyond $60\,kT$ carries $e^{-60}$",
+        r"the order is in the logarithmic step of the energies",
+    ),
+    problem=_rate_coefficient_problem,
+)
 @sp.profile("plasmacoll.rate_coefficient", tags=PROFILE_TAGS)
 def rate_coefficient(
     cross_section: CrossSection,
@@ -95,6 +125,41 @@ def rate_coefficient(
     return rates.reshape(temperatures.shape)
 
 
+def _rate_table_problem() -> ConvergenceProblem:
+    """An Arrhenius rate tabulated with log spacing ``h``, against the formula between."""
+    a, b, c = 1.0e-14, 0.5, 5.0
+    temperature = np.geomspace(1.0, 100.0, 401)
+    exact = a * temperature**b * np.exp(-c / temperature)
+    span = np.log(100.0)
+
+    def error(step: float) -> float:
+        table = RateTable.arrhenius(
+            a,
+            b,
+            c,
+            min_temperature=1.0,
+            max_temperature=100.0,
+            num=round(span / step) + 1,
+        )
+        return float(np.max(np.abs(table(temperature) / exact - 1.0)))
+
+    return ConvergenceProblem(
+        error, steps=[span / 20, span / 40, span / 80, span / 160]
+    )
+
+
+@method(
+    equations={
+        "interpolation": r"\ln K(T) = \ln K_i + \frac{\ln K_{i+1} - \ln K_i}{\ln T_{i+1} - \ln T_i}\,(\ln T - \ln T_i), \qquad T_i \le T \le T_{i+1}",
+    },
+    order=2,
+    assumptions=(
+        r"clamped to the table's temperatures; zero where the interpolated $K$ falls below 10 times the smallest normal float (a zero stays zero)",
+        r"`from_cross_section` tabulates `rate_coefficient` on 121 logarithmic temperatures from 0.01 to 1000 eV",
+    ),
+    components=("plasmacoll.rates.rate_coefficient",),
+    problem=_rate_table_problem,
+)
 @dataclass(frozen=True)
 class RateTable:
     """``K(T)`` of a cross section, tabulated once and interpolated in log-log.
@@ -121,7 +186,7 @@ class RateTable:
         num: int = 121,
         label: str = "",
     ) -> RateTable:
-        """Tabulate :func:`rate_coefficient` on ``num`` temperatures (eV)."""
+        """Tabulate `rate_coefficient` on ``num`` temperatures (eV)."""
         if not 0.0 < min_temperature < max_temperature:
             raise ValueError("need 0 < min_temperature < max_temperature")
         temperature = np.geomspace(min_temperature, max_temperature, num)
@@ -131,6 +196,11 @@ class RateTable:
         return cls(temperature, rate, label or cross_section.label)
 
     @classmethod
+    @method(
+        equations={"arrhenius": r"K(T) = a\,T^b e^{-c/T}"},
+        assumptions=(r"$T$ in eV, $K$ in m$^3$/s",),
+        symbolic=lambda: _arrhenius_rules(),
+    )
     def arrhenius(
         cls,
         a: float,
@@ -175,6 +245,27 @@ class RateTable:
         return np.where(value <= tiny * 10, 0.0, value)
 
 
+def _arrhenius_rules() -> dict:
+    """The SymPy rule of `RateTable.arrhenius` (for the tests): at a table point."""
+    import sympy
+
+    a, b, c, t = sympy.symbols("a b c temperature", positive=True)
+    return {
+        "arrhenius": Rule(
+            a * t**b * sympy.exp(-c / t),
+            implementation=lambda a, b, c, temperature: RateTable.arrhenius(
+                a, b, c, min_temperature=temperature, max_temperature=2.0 * temperature
+            )(temperature),
+            ranges={
+                "a": (1.0e-15, 1.0e-13),
+                "b": (-1.0, 1.0),
+                "c": (0.0, 10.0),
+                "temperature": (0.5, 20.0),
+            },
+        )
+    }
+
+
 def _interpolate_eepf(
     energy: np.ndarray, grid: np.ndarray, f0: np.ndarray
 ) -> np.ndarray:
@@ -191,6 +282,44 @@ def _interpolate_eepf(
     return out
 
 
+def _eedf_rate_problem() -> ConvergenceProblem:
+    """A Maxwellian ``F0`` and a constant cross section, against ``gamma sigma <eps>``.
+
+    ``log F0`` is linear, so its interpolation is exact; the error is that of the
+    trapezoidal rule on intervals ``h`` (eV), refined by ``refine``.
+    """
+    sigma, kt = 1.0e-19, 2.0
+    grid = np.linspace(0.0, 60.0 * kt, 61)
+    eepf = 2.0 / np.sqrt(np.pi) * kt**-1.5 * np.exp(-grid / kt)
+    gamma = np.sqrt(2.0 * ELEMENTARY_CHARGE / ELECTRON_MASS)
+    exact = gamma * sigma * 2.0 / np.sqrt(np.pi) * kt**0.5
+
+    def error(step: float) -> float:
+        rate = eedf_rate_coefficient(
+            CrossSection.constant(sigma),
+            grid,
+            eepf,
+            normalise=False,
+            refine=round(2.0 * kt / step),
+        )
+        return float(abs(rate - exact) / exact)
+
+    return ConvergenceProblem(error, steps=[kt, kt / 2, kt / 4, kt / 8])
+
+
+@method(
+    equations={
+        "rate": r"k = \gamma\,\frac{\int \varepsilon\,\sigma(\varepsilon)\,F_0(\varepsilon)\,d\varepsilon}{\int \varepsilon^{1/2} F_0(\varepsilon)\,d\varepsilon}, \qquad \gamma = \sqrt{\frac{2e}{m}}",
+        "interpolation": r"\ln F_0(\varepsilon) \text{ linear between grid points where both values are positive, else } F_0 \text{ linear}; \quad F_0 = 0 \text{ beyond the grid}",
+    },
+    order=2,
+    assumptions=(
+        r"$F_0$ in eV$^{-3/2}$; the denominator only with `normalise=True` (the default), on the same quadrature",
+        r"the trapezoidal rule on the grid, the table energies and the threshold, every interval cut into `refine` (4) pieces; $\sigma = 0$ below the threshold",
+        r"the cross section looked up at the electron energy (lab frame); the order is in the size of the pieces",
+    ),
+    problem=_eedf_rate_problem,
+)
 @sp.profile("plasmacoll.eedf_rate_coefficient", tags=PROFILE_TAGS)
 def eedf_rate_coefficient(
     cross_section: CrossSection,
