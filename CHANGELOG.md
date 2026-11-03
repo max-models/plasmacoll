@@ -5,8 +5,21 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-03
+
 ### Added
 
+- `plasmacoll.units`: astropy quantities in the setup of a model. A setting given as a Quantity
+  (`0.1 * u.ns`), a string (`"0.1 ns"`, as in a configuration file) or a number in its documented
+  unit is stored as a plain number in that unit; a wrong dimension raises, and K, eV and J convert
+  into each other. `unit_field` and `convert_units` for dataclasses, `to_unit`, `to_array`,
+  `with_unit` and `rate_to_si`. astropy is imported only when a Quantity or a string is given
+  (the extra `plasmacoll[units]`). Moved from picnic.
+- The setup of plasmacoll takes quantities: `NeutralBackground`, `DensityProfile`,
+  `CollisionProcess`, `CrossSection` and its constructors, `ZeroDReactor`, the beam-gas
+  reactions, the process builders (argon, metals, caesium, hydrogen), `rate_coefficient`,
+  `RateTable`, `solve_eedf` and `swarm_table`, `VibrationalDistribution`, the charge states and
+  Rudd's cross sections. A tutorial, "Units".
 - Superelastic collisions in `solve_eedf`: an excitation with `upper_state` (and
   `statistical_weight_ratio`, new `CollisionProcess` fields) also has its inverse, by detailed
   balance; its rate is `"<name> (superelastic)"` and its power `power["superelastic"]`.
@@ -35,6 +48,31 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `vriens_smeets_excitation_rate` and `vriens_smeets_ionization_rate` in
   `plasmacoll.atomic_hydrogen`: the Maxwellian rate coefficients of Vriens and Smeets (1980) for
   H(n) at any `n`, beyond the n = 24 where Johnson's excitation formula turns negative.
+- The reactions of a fast hydrogen or deuterium beam with H₂ gas (`hydrogen_beam_on_h2`,
+  `BeamGasReactions`): H⁻ stripping and H⁺ capture from Janev, Reiter and Samm (2003), eqs. (159)
+  and (144)–(145) (also in `JANEV_FITS`), gas ionization by protons from Rudd's model, and labelled
+  placeholders for the rest; as charge-state cross sections at one energy and as MCC processes.
+- A process kind `beam_ionization`: a fast projectile ionizes the target and keeps its velocity,
+  the target ion starts at rest and the electron with a few times the binding energy (the
+  backstreaming ions of an accelerator).
+- `collide_now` and `attenuation` for event-driven collisions.
+- Caesium: electron-impact ionization and Cs/Cs+ collisions on H2.
+- The neutrals each collision step consumes, per background.
+
+### Fixed
+
+- The docstrings render on the API pages: code spans instead of reST roles such as `:func:`.
+- `merge_markers`: the docstring gives the group size the code uses, `max(3, ceil(2 N / target))`.
+- `solve_eedf`: spatial growth converges with strong ionization (a secant step on `alpha/N`) and
+  on its own grid search (done with temporal growth, then spatial growth on the chosen grid);
+  the exponent of `F0` in a cell is van Leer's mean of the one-sided slopes, so that a first
+  iterate with empty cells no longer blows up the collision integrals (1000 Td on 500 cells
+  did not converge).
+
+## [0.4.0] - 2026-10-28
+
+### Added
+
 - `plasmacoll.atomic_hydrogen`: electron excitation `n -> m` and ionization of H(n) for any
   principal quantum numbers, from Janev, Reiter and Samm (2003), section 2.1, and Johnson's
   (1972) formulas; Johnson's oscillator strengths; `hydrogen_atom_processes` for the MCC.
@@ -45,14 +83,6 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   products. `stripping_processes` builds these processes from a `ChargeStateTransitions`, so the
   markers and `charge_state_fractions` use the same cross sections; over many markers the
   populations follow the fractions along the path.
-- The reactions of a fast hydrogen or deuterium beam with H₂ gas (`hydrogen_beam_on_h2`,
-  `BeamGasReactions`): H⁻ stripping and H⁺ capture from Janev, Reiter and Samm (2003), eqs. (159)
-  and (144)–(145) (also in `JANEV_FITS`), gas ionization by protons from Rudd's model, and labelled
-  placeholders for the rest; as charge-state cross sections at one energy and as MCC processes.
-- A process kind `beam_ionization`: a fast projectile ionizes the target and keeps its velocity,
-  the target ion starts at rest and the electron with a few times the binding energy (the
-  backstreaming ions of an accelerator).
-
 - Argon and metal process sets for magnetron models (`plasmacoll.argon`, `plasmacoll.metals`):
   `argon_electron_processes` builds the electron-argon processes of a downloaded LXCat set,
   `argon_ion_processes` the isotropic and backscatter Ar+ + Ar processes from Phelps' 1994 or
@@ -83,16 +113,6 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   models. Checked against the Maxwell and Druyvesteyn limits, the Reid ramp and Lucas–Saelee
   model gases and BOLOS.
 - `plasmacoll.constants.TOWNSEND`, 1 Td in V m².
-
-### Fixed
-
-- The docstrings render on the API pages: code spans instead of reST roles such as `:func:`.
-- `merge_markers`: the docstring gives the group size the code uses, `max(3, ceil(2 N / target))`.
-- `solve_eedf`: spatial growth converges with strong ionization (a secant step on `alpha/N`) and
-  on its own grid search (done with temporal growth, then spatial growth on the chosen grid);
-  the exponent of `F0` in a cell is van Leer's mean of the one-sided slopes, so that a first
-  iterate with empty cells no longer blows up the collision integrals (1000 Td on 500 cells
-  did not converge).
 
 ## [0.3.0] - 2026-10-21
 
