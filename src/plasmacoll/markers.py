@@ -18,6 +18,7 @@ from methodcard import method
 
 from plasmacoll._types import Array
 from plasmacoll.constants import ELEMENTARY_CHARGE
+from plasmacoll.units import to_unit
 
 __all__ = ["MarkerSet", "ParticleArrays"]
 
@@ -104,10 +105,13 @@ class ParticleArrays:
     ) -> ParticleArrays:
         """Sample ``num`` markers from a drifting Maxwellian, all at the origin.
 
+        ``mass``, ``temperature`` and ``drift`` take astropy Quantities, strings
+        such as ``"300 K"`` or plain numbers in the units below.
+
         Args:
             num: The number of markers.
             mass: Particle mass in kg.
-            temperature: Temperature ``kT`` in eV; see
+            temperature: Temperature ``kT`` in eV (a Quantity also in K); see
                 `plasmacoll.constants.kelvin_to_ev`.
             weight: Physical particles per marker.
             drift: Mean velocity in m/s.
@@ -115,6 +119,9 @@ class ParticleArrays:
             rng: A NumPy or CuPy ``Generator``; one seeded with ``seed`` if None.
             seed: Seed of the generator made when ``rng`` is None.
         """
+        mass = to_unit(mass, "kg", "mass")
+        temperature = to_unit(temperature, "eV", "temperature")
+        drift = to_unit(drift, "m/s", "drift")
         if num < 0:
             raise ValueError("num must be >= 0")
         if mass <= 0.0:

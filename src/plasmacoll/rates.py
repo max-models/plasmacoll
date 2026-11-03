@@ -32,6 +32,7 @@ from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll._types import Array
 from plasmacoll.constants import ELECTRON_MASS, ELEMENTARY_CHARGE
 from plasmacoll.cross_sections import CrossSection
+from plasmacoll.units import to_array, to_unit
 
 __all__ = ["RateTable", "eedf_rate_coefficient", "rate_coefficient"]
 
@@ -79,6 +80,9 @@ def rate_coefficient(
 ) -> np.ndarray:
     """Return ``<sigma g>`` in m^3/s over a Maxwellian of relative speeds.
 
+    The temperature and the masses take astropy Quantities (the temperature
+    also in K), strings or plain numbers in the units below.
+
     Args:
         cross_section: The cross section against energy (eV).
         temperature: ``kT`` of the relative motion in eV, a number or an array.
@@ -93,9 +97,11 @@ def rate_coefficient(
     Returns:
         The rate coefficients, of the shape of ``temperature``.
     """
+    reduced_mass = to_unit(reduced_mass, "kg", "reduced_mass")
+    incident_mass = to_unit(incident_mass, "kg", "incident_mass")
     if reduced_mass <= 0.0:
         raise ValueError("reduced_mass must be > 0")
-    temperatures = np.asarray(temperature, dtype=float)
+    temperatures = np.asarray(to_array(temperature, "eV", "temperature"), dtype=float)
     if np.any(temperatures <= 0.0):
         raise ValueError("temperature must be > 0")
     scale = 1.0 if incident_mass is None else incident_mass / reduced_mass
@@ -164,6 +170,9 @@ def _rate_table_problem() -> ConvergenceProblem:
 class RateTable:
     """``K(T)`` of a cross section, tabulated once and interpolated in log-log.
 
+    ``temperature`` and ``rate`` take astropy Quantities, strings or plain
+    arrays in the units below; the temperature also in K.
+
     Attributes:
         temperature: The table temperatures in eV, increasing.
         rate: ``K`` in m^3/s at ``temperature``.
@@ -186,7 +195,12 @@ class RateTable:
         num: int = 121,
         label: str = "",
     ) -> RateTable:
-        """Tabulate `rate_coefficient` on ``num`` temperatures (eV)."""
+        """Tabulate `rate_coefficient` on ``num`` temperatures (eV).
+
+        The masses (kg) and the temperatures (eV, or K) may be Quantities.
+        """
+        min_temperature = to_unit(min_temperature, "eV", "min_temperature")
+        max_temperature = to_unit(max_temperature, "eV", "max_temperature")
         if not 0.0 < min_temperature < max_temperature:
             raise ValueError("need 0 < min_temperature < max_temperature")
         temperature = np.geomspace(min_temperature, max_temperature, num)
@@ -212,15 +226,24 @@ class RateTable:
         num: int = 121,
         label: str = "",
     ) -> RateTable:
-        """Tabulate ``K = a T^b exp(-c / T)`` (``T`` in eV, ``K`` in m^3/s)."""
+        """Tabulate ``K = a T^b exp(-c / T)`` (``T`` in eV, ``K`` in m^3/s).
+
+        ``c`` (eV) and the temperatures (eV, or K) may be Quantities; ``a`` is
+        a number in m^3/s eV^-b.
+        """
+        c = to_unit(c, "eV", "c")
+        min_temperature = to_unit(min_temperature, "eV", "min_temperature")
+        max_temperature = to_unit(max_temperature, "eV", "max_temperature")
         temperature = np.geomspace(min_temperature, max_temperature, num)
         rate = a * temperature**b * np.exp(-c / temperature)
         return cls(temperature, rate, label)
 
     def __post_init__(self) -> None:
-        """Validate the table."""
-        temperature = np.asarray(self.temperature, dtype=float)
-        rate = np.asarray(self.rate, dtype=float)
+        """Convert to eV and m^3/s and validate the table."""
+        temperature = np.asarray(
+            to_array(self.temperature, "eV", "temperature"), dtype=float
+        )
+        rate = np.asarray(to_array(self.rate, "m^3/s", "rate"), dtype=float)
         if temperature.ndim != 1 or temperature.shape != rate.shape:
             raise ValueError("temperature and rate must be 1D arrays of equal length")
         if temperature.size < 2 or np.any(np.diff(temperature) <= 0.0):

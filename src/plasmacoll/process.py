@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from methodcard import method
 
 from plasmacoll.cross_sections import CrossSection
+from plasmacoll.units import convert_units, unit_field
 
 __all__ = [
     "ENERGY_FRAMES",
@@ -141,6 +142,9 @@ class CollisionProcess:
     elastic cross section must be the momentum-transfer cross section; with an
     anisotropic model it must be the integral elastic cross section.
 
+    ``energy_loss`` and ``sharing_energy`` take astropy Quantities
+    (``11.5 * u.eV``), strings (``"11.5 eV"``) or plain numbers in eV.
+
     Attributes:
         kind: One of `PROCESS_KINDS`.
         background: The name of the `plasmacoll.background.NeutralBackground`.
@@ -178,18 +182,19 @@ class CollisionProcess:
     background: str
     cross_section: CrossSection
     name: str = ""
-    energy_loss: float | None = None
+    energy_loss: float | None = unit_field("eV", None)
     energy_frame: str = "center_of_mass"
     products: Mapping[str, str] = field(default_factory=dict)
     energy_sharing: str = "equal"
-    sharing_energy: float | None = None
+    sharing_energy: float | None = unit_field("eV", None)
     scattering: str = "isotropic"
     charge_change: int = 1
     upper_state: str | None = None
     statistical_weight_ratio: float = 1.0
 
     def __post_init__(self) -> None:
-        """Validate the process definition."""
+        """Convert the energies and validate the process definition."""
+        convert_units(self)
         if self.kind not in PROCESS_KINDS:
             raise ValueError(
                 f"Unknown process kind {self.kind!r}; expected one of {PROCESS_KINDS}"

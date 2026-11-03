@@ -85,8 +85,10 @@ def proton_hydrogen_processes(
         h2_ion: A species name such as ``"H2+"``: the charge exchange with H2
             then creates that ion with the molecule's velocity; otherwise it
             only removes the proton.
-        rotational_energy: Threshold of the rotational excitation in eV.
-        vibrational_energy: Threshold of the vibrational excitation in eV.
+        rotational_energy: Threshold of the rotational excitation in eV (or a
+            Quantity).
+        vibrational_energy: Threshold of the vibrational excitation in eV (or
+            a Quantity).
 
     Raises:
         KeyError: If a table is missing.

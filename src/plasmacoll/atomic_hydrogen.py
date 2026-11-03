@@ -48,6 +48,7 @@ import numpy as np
 from methodcard import Rule, method
 
 from plasmacoll.janev import HydrogenFit
+from plasmacoll.units import to_array
 
 __all__ = [
     "HYDROGEN_RYDBERG",
@@ -484,10 +485,11 @@ def vriens_smeets_excitation_rate(
     Args:
         n: The lower level.
         m: The upper level, ``m > n``.
-        temperature: ``kT_e`` in eV.
+        temperature: ``kT_e`` in eV, a number or an array; also an astropy
+            Quantity (in K or eV) or a string such as ``"3 eV"``.
     """
     _check_pair(n, m)
-    t = np.asarray(temperature, dtype=float)
+    t = np.asarray(to_array(temperature, "eV", "temperature"), dtype=float)
     ry = HYDROGEN_RYDBERG
     delta_e = transition_energy(n, m)
     energy_n = ry / n**2
@@ -559,9 +561,14 @@ def vriens_smeets_ionization_rate(
 
     Vriens and Smeets (1980), eq. (8): ``K = 9.56e-6 T^-1.5 exp(-e_n) /
     (e_n^2.33 + 4.38 e_n^1.72 + 1.32 e_n)`` cm^3/s with ``e_n = E_n / T``.
+
+    Args:
+        n: The level.
+        temperature: ``kT_e`` in eV, a number or an array; also an astropy
+            Quantity (in K or eV) or a string such as ``"3 eV"``.
     """
     _check_level(n)
-    t = np.asarray(temperature, dtype=float)
+    t = np.asarray(to_array(temperature, "eV", "temperature"), dtype=float)
     eps = ionization_energy(n) / t
     return (
         _CM3
@@ -589,7 +596,7 @@ def hydrogen_atom_processes(
         background: The name of the H background.
         max_level: The highest upper level of the excitations.
         ion: The species of the ion of the ionization.
-        max_energy: The last tabulated energy in eV.
+        max_energy: The last tabulated energy in eV (or a Quantity).
     """
     from plasmacoll.process import CollisionProcess
 

@@ -57,6 +57,7 @@ from plasmacoll.cross_sections import CrossSection
 from plasmacoll.janev import JANEV_FITS
 from plasmacoll.process import CollisionProcess
 from plasmacoll.secondaries import RUDD_H2
+from plasmacoll.units import convert_units, to_unit, unit_field
 
 __all__ = [
     "PLACEHOLDER_RATIOS",
@@ -121,16 +122,18 @@ class BeamGasReactions:
         charges: The charge of every state in e.
         sharing_energy: The width ``w`` in eV of the energy of the electrons
             the ionization ejects (see ``beam_ionization`` in
-            `plasmacoll.mcc`).
+            `plasmacoll.mcc`); also an astropy Quantity or a string such
+            as ``"15.4 eV"``.
     """
 
     reactions: Sequence[BeamGasReaction]
     states: Sequence[str] = HYDROGEN_STATES
     charges: Mapping[str, int] = field(default_factory=lambda: dict(HYDROGEN_CHARGES))
-    sharing_energy: float = H2_SHARING_ENERGY
+    sharing_energy: float = unit_field("eV", H2_SHARING_ENERGY)
 
     def __post_init__(self) -> None:
-        """Validate the states of the reactions."""
+        """Convert the sharing energy and validate the states of the reactions."""
+        convert_units(self)
         object.__setattr__(self, "reactions", tuple(self.reactions))
         object.__setattr__(self, "states", tuple(self.states))
         object.__setattr__(self, "charges", dict(self.charges))
@@ -159,6 +162,7 @@ class BeamGasReactions:
 
     def transitions(self, energy: float) -> ChargeStateTransitions:
         """Return the charge-changing cross sections at the projectile energy (eV)."""
+        energy = to_unit(energy, "eV", "energy")
         table: dict[str, dict[tuple[str, str], float]] = {t: {} for t in self.targets}
         for reaction in self.reactions:
             if reaction.end is not None:
@@ -167,7 +171,8 @@ class BeamGasReactions:
         return ChargeStateTransitions(table, self.states)
 
     def ionization(self, energy: float) -> dict[str, dict[str, float]]:
-        """Return ``{target: {state: sigma}}`` (m^2) of the ionization of the targets."""
+        """Return ``{target: {state: sigma}}`` (m^2) at the projectile energy (eV)."""
+        energy = to_unit(energy, "eV", "energy")
         table: dict[str, dict[str, float]] = {t: {} for t in self.targets}
         for reaction in self.reactions:
             if reaction.end is None:
@@ -296,7 +301,8 @@ def hydrogen_beam_on_h2(
         isotope: ``"H"`` or ``"D"``; a deuterium beam takes the hydrogen data at
             the same speed.
         max_energy: The largest projectile energy in eV of the tables; beyond
-            it the last values hold.
+            it the last values hold. Also an astropy Quantity or a string such
+            as ``"2 MeV"``.
         target: The name of the gas target.
         num: The number of table points per cross section.
 
@@ -306,6 +312,7 @@ def hydrogen_beam_on_h2(
     """
     if isotope not in _ATOM_MASS:
         raise ValueError(f"isotope must be 'H' or 'D', not {isotope!r}")
+    max_energy = to_unit(max_energy, "eV", "max_energy")
     if max_energy <= 0.0:
         raise ValueError("max_energy must be > 0")
     # the hydrogen data at the energy of a hydrogen projectile of the same speed

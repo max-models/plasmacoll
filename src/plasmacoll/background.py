@@ -35,6 +35,7 @@ from methodcard import ConvergenceProblem, method
 
 from plasmacoll._types import Array
 from plasmacoll.constants import ELEMENTARY_CHARGE
+from plasmacoll.units import convert_units, to_array, unit_field
 
 __all__ = [
     "DensityProfile",
@@ -90,7 +91,9 @@ class DensityProfile:
 
     ``factors`` (dimensionless, >= 0) scale the background's reference density
     at the tabulated ``positions`` (m, strictly increasing) of coordinate
-    ``axis``. Outside the table the end values are used.
+    ``axis``. Outside the table the end values are used. ``positions`` may be
+    an astropy Quantity (``[0, 5] * u.cm``), a string (``"[0, 5] cm"``) or an
+    array in m.
 
     Attributes:
         axis: The column of the marker positions the profile depends on.
@@ -103,8 +106,8 @@ class DensityProfile:
     factors: Array
 
     def __post_init__(self) -> None:
-        """Validate and normalize the table."""
-        positions = xp.asarray(self.positions, dtype=float)
+        """Convert the positions to m, validate and normalize the table."""
+        positions = xp.asarray(to_array(self.positions, "m", "positions"), dtype=float)
         factors = xp.asarray(self.factors, dtype=float)
         if positions.ndim != 1 or positions.shape != factors.shape:
             raise ValueError("positions and factors must be 1D arrays of equal length")
@@ -230,6 +233,10 @@ class NeutralBackground:
     ``temperature * temperature_profile(x)``. The gas flows with the mean
     velocity ``drift``.
 
+    The physical settings take astropy Quantities (``300 * u.K``), strings
+    (``"40 u"``) or plain numbers in the units below; the temperature may be
+    given in K, eV or J and is kept as ``kT`` in eV.
+
     Attributes:
         name: The name processes refer to the background by.
         density: Number density in m^-3.
@@ -241,15 +248,16 @@ class NeutralBackground:
     """
 
     name: str
-    density: float
-    temperature: float
-    mass: float
+    density: float = unit_field("m^-3")
+    temperature: float = unit_field("eV")
+    mass: float = unit_field("kg")
     profile: Profile | None = None
     temperature_profile: Profile | None = None
-    drift: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    drift: tuple[float, float, float] = unit_field("m/s", (0.0, 0.0, 0.0))
 
     def __post_init__(self) -> None:
-        """Validate the background parameters."""
+        """Convert the quantities and validate the background parameters."""
+        convert_units(self)
         if self.density < 0.0:
             raise ValueError("background density must be >= 0")
         if self.temperature < 0.0:

@@ -37,6 +37,7 @@ from methodcard import Rule, method
 
 from plasmacoll._types import Array
 from plasmacoll.constants import kelvin_to_ev
+from plasmacoll.units import convert_units, to_unit, unit_field
 
 __all__ = [
     "H2_GROUND_STATE_VIBRATIONAL_ENERGY_EV",
@@ -149,13 +150,17 @@ class VibrationalDistribution:
     is negligible for T_vib below about 3000 K and rises exponentially above
     it (citing Kalache et al. 2004), so getting the order of magnitude of the
     high-v population right matters far more than its detailed shape.
+
+    ``energies_ev`` and ``temperature_ev`` are in eV; they also take astropy
+    Quantities (the temperature also in K) or strings such as ``"5000 K"``.
     """
 
-    energies_ev: tuple[float, ...]
-    temperature_ev: float
+    energies_ev: tuple[float, ...] = unit_field("eV")
+    temperature_ev: float = unit_field("eV")
 
     def __post_init__(self) -> None:
-        """Validate the distribution's parameters."""
+        """Convert the energies and validate the distribution's parameters."""
+        convert_units(self)
         if len(self.energies_ev) == 0:
             raise ValueError("energies_ev must not be empty")
         if self.temperature_ev <= 0.0:
@@ -174,6 +179,7 @@ class VibrationalDistribution:
         cls, temperature_k: float
     ) -> VibrationalDistribution:
         """Build the H2(X) distribution from a vibrational temperature in K."""
+        temperature_k = to_unit(temperature_k, "K", "temperature_k")
         if temperature_k <= 0.0:
             raise ValueError("temperature_k must be > 0")
         return cls.h2_ground_state(kelvin_to_ev(temperature_k))
@@ -239,8 +245,13 @@ def estimate_electronegativity(
     rate coefficient, estimated at around 10 at maximum (Zorat et al. 2000;
     Janev et al. 1987; Graham 1995, as summarized by Krištof et al. 2019).
     This is an order-of-magnitude estimate, not a validated absolute rate --
-    treat the result the same way.
+    treat the result the same way. The densities are in m^-3; they also take
+    astropy Quantities or strings such as ``"1e18 m^-3"``.
     """
+    hydrogen_atom_density = to_unit(
+        hydrogen_atom_density, "m^-3", "hydrogen_atom_density"
+    )
+    molecule_density = to_unit(molecule_density, "m^-3", "molecule_density")
     if hydrogen_atom_density <= 0.0:
         raise ValueError("hydrogen_atom_density must be > 0")
     if molecule_density < 0.0:

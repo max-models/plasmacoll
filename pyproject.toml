@@ -37,6 +37,7 @@ optional-dependencies.dev = [
   "plasmacoll[test,docs]",
 ]
 optional-dependencies.docs = [
+  "astropy",
   "griffe",
   "ipykernel",
   "matplotlib",
@@ -106,6 +107,11 @@ include = [ "src" ]
 [tool.ty.analysis]
 # CuPy is optional and not installed in CI
 allowed-unresolved-imports = [ "cupy" ]
+
+# the tests pass quantities as strings to settings annotated as floats
+[[tool.ty.overrides]]
+include = [ "src/plasmacoll/tests/**" ]
+rules = { invalid-argument-type = "ignore" }
 
 # PRs to devel test against the devel branches of the max-models packages (pinned in
 # uv.lock); PRs to main and the release use PyPI only (CI sets UV_NO_SOURCES).

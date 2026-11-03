@@ -68,6 +68,10 @@ from plasmacoll.background import NeutralBackground
 from plasmacoll.constants import ELECTRON_MASS, ELEMENTARY_CHARGE, TOWNSEND
 from plasmacoll.process import CollisionProcess
 from plasmacoll.rates import RateTable
+from plasmacoll.units import to_array, to_unit
+
+#: The Townsend (1e-21 V m^2) as an astropy unit string; astropy has no ``Td``.
+_TD = "1e-21 V m2"
 
 __all__ = [
     "GROWTH_MODELS",
@@ -948,6 +952,11 @@ def solve_eedf(
 ) -> BoltzmannSolution:
     """Return the steady electron energy distribution in a uniform DC field.
 
+    ``reduced_field``, ``gas_temperature`` and ``max_energy`` take astropy
+    Quantities (``1e-20 * u.V * u.m**2``, ``300 * u.K``), strings or plain
+    numbers in the units below; astropy has no Townsend, so a reduced field
+    in Td is a plain number.
+
     Args:
         processes: The electron-impact processes: ``elastic`` (with the
             momentum-transfer cross section), ``excitation``, ``dissociation``,
@@ -981,6 +990,9 @@ def solve_eedf(
             from the mixture, or a zero field in a gas at zero temperature.
         RuntimeError: If the iteration does not converge.
     """
+    reduced_field = to_unit(reduced_field, _TD, "reduced_field")
+    gas_temperature = to_unit(gas_temperature, "eV", "gas_temperature")
+    max_energy = to_unit(max_energy, "eV", "max_energy")
     if growth not in GROWTH_MODELS:
         raise ValueError(f"growth must be one of {GROWTH_MODELS}")
     fractions, masses = _mixture(processes, mixture, states)
@@ -1084,10 +1096,12 @@ def swarm_table(
     Args:
         processes: The electron-impact processes, as for `solve_eedf`.
         mixture: The gases, as for `solve_eedf`.
-        reduced_fields: ``E/N`` in Td, increasing.
+        reduced_fields: ``E/N`` in Td, increasing; a Quantity in V m^2 too.
         gas_temperature: ``kT`` of the gas in eV, as for `solve_eedf`.
         **options: Further keyword arguments of `solve_eedf`.
     """
+    reduced_fields = to_array(reduced_fields, _TD, "reduced_fields")
+    gas_temperature = to_unit(gas_temperature, "eV", "gas_temperature")
     fields = np.asarray(xp.to_numpy(xp.asarray(reduced_fields, dtype=float)))
     if fields.ndim != 1 or fields.size < 2 or np.any(np.diff(fields) <= 0.0):
         raise ValueError("reduced_fields must be increasing, at least two")

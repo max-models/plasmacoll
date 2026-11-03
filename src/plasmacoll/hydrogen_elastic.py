@@ -69,6 +69,7 @@ from methodcard import Rule, method
 
 from plasmacoll._types import Array
 from plasmacoll.cross_sections import CrossSection
+from plasmacoll.units import to_unit
 
 __all__ = [
     "ELASTIC_FITS",
@@ -246,7 +247,7 @@ class ElasticFit:
             kind: ``"momentum_transfer"`` for an ``elastic`` process with
                 isotropic scattering and for `plasmacoll.solve_eedf`, or
                 ``"integral"`` for one with an anisotropic angular distribution.
-            max_energy: The last table energy in eV.
+            max_energy: The last table energy in eV (or a Quantity).
             num: Number of logarithmically spaced points.
 
         Raises:
@@ -257,6 +258,7 @@ class ElasticFit:
         function = (
             self.momentum_transfer if kind == "momentum_transfer" else self.integral
         )
+        max_energy = to_unit(max_energy, "eV", "max_energy")
         energy = np.concatenate([[0.0], np.geomspace(1.0e-3, max_energy, num)])
         name = (
             "momentum transfer" if kind == "momentum_transfer" else "integral elastic"
