@@ -7,6 +7,21 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A Numerics section in the docs (header and sidebar): an overview of the model's equations
+  (`docs/src/content/docs/numerics/index.mdx`, with the main cards) and one page per module in
+  the order of the model (starlight-theme's `methodcard: { pages: true }`, theme 0.7.4).
+- Method cards (methodcard) on the equations of the model: the null-collision step (frequencies,
+  bound, candidates, forced collisions, attenuation, scattering angles), the collision
+  kinematics, the backgrounds and density profiles, the cross-section tables, the rate
+  coefficients, the two-term Boltzmann solver and its moments, the charge-state fractions, the
+  beam-gas reactions, the cross-section fits (Janev, Johnson, Vriens-Smeets, Park, Rudd,
+  Phelps, Lotz, Langevin), the vibrational populations, merging and splitting and the reactor,
+  with their assumptions and references. `test_method_cards.py` checks them: SymPy rules for 35
+  closed forms and fits, the observed order of seven discretisations (table and profile
+  interpolation, the Maxwellian and EEDF rate integrals, the rate table, the Boltzmann solver
+  and Rudd's moments), and the cards of the docs against those of the code. Adds the
+  `methodcard` dependency.
+- The docs show the cards: a "Numerics" page and a section on each method's API page.
 - `vriens_smeets_excitation_rate` and `vriens_smeets_ionization_rate` in
   `plasmacoll.atomic_hydrogen`: the Maxwellian rate coefficients of Vriens and Smeets (1980) for
   H(n) at any `n`, beyond the n = 24 where Johnson's excitation formula turns negative.
@@ -58,6 +73,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   models. Checked against the Maxwell and Druyvesteyn limits, the Reid ramp and Lucas–Saelee
   model gases and BOLOS.
 - `plasmacoll.constants.TOWNSEND`, 1 Td in V m².
+
+### Fixed
+
+- The docstrings render on the API pages: code spans instead of reST roles such as `:func:`.
+- `merge_markers`: the docstring gives the group size the code uses, `max(3, ceil(2 N / target))`.
 
 ## [0.3.0] - 2026-10-21
 

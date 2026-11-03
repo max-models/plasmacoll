@@ -46,7 +46,7 @@ __all__ = [
     "proton_hydrogen_processes",
 ]
 
-#: The keys of the cross sections :func:`proton_hydrogen_processes` needs.
+#: The keys of the cross sections `proton_hydrogen_processes` needs.
 PROTON_HYDROGEN_PROCESS_KEYS = (
     "mt_h",
     "mt_h2",
@@ -79,7 +79,7 @@ def proton_hydrogen_processes(
 
     Args:
         cross_sections: Tables (energies in eV, cross sections in m^2) for
-            every key in :data:`PROTON_HYDROGEN_PROCESS_KEYS`.
+            every key in `PROTON_HYDROGEN_PROCESS_KEYS`.
         atom: The name of the atomic hydrogen background.
         molecule: The name of the molecular hydrogen background.
         h2_ion: A species name such as ``"H2+"``: the charge exchange with H2

@@ -23,9 +23,9 @@ Kimura and Kasugai 2010).
 It does **not** solve the vibrational kinetics (electron-impact excitation,
 V-V/V-T relaxation, wall association) self-consistently. Level-resolved DA
 cross sections are the fits of Janev, Reiter and Samm (2003) in
-:mod:`plasmacoll.janev` (:func:`plasmacoll.janev.dissociative_attachment`), or
+`plasmacoll.janev` (`plasmacoll.janev.dissociative_attachment`), or
 other data through
-:meth:`plasmacoll.cross_sections.CrossSection.vibrational_mixture`.
+`plasmacoll.cross_sections.CrossSection.vibrational_mixture`.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import cunumpy as xp
+from methodcard import Rule, method
 
 from plasmacoll._types import Array
 from plasmacoll.constants import kelvin_to_ev
@@ -73,6 +74,33 @@ H2_GROUND_STATE_VIBRATIONAL_ENERGY_EV: tuple[float, ...] = (
 )
 
 
+def _populations_rules() -> dict:
+    """The SymPy rule of `boltzmann_level_populations` for two levels (for the tests)."""
+    import sympy
+
+    e, t = sympy.symbols("energy temperature", positive=True)
+    return {
+        "populations": Rule(
+            sympy.exp(-e / t) / (1 + sympy.exp(-e / t)),
+            implementation=lambda energy, temperature: float(
+                xp.to_numpy(
+                    boltzmann_level_populations(xp.asarray([0.0, energy]), temperature)
+                )[1]
+            ),
+            ranges={"energy": (0.1, 2.0), "temperature": (0.05, 2.0)},
+        )
+    }
+
+
+@method(
+    equations={
+        "populations": r"\frac{n_i}{n} = \frac{e^{-E_i/T}}{\sum_j e^{-E_j/T}}",
+    },
+    assumptions=(
+        r"$E_i$ and $T$ in eV; the energies shifted by $\min_j E_j$ before the exponential, which leaves the populations unchanged",
+    ),
+    symbolic=lambda: _populations_rules(),
+)
 def boltzmann_level_populations(
     energies_ev: Array,
     temperature_ev: float,
@@ -92,6 +120,20 @@ def boltzmann_level_populations(
     return weights / xp.sum(weights)
 
 
+@method(
+    equations={
+        "populations": r"\frac{n_v}{n} = \frac{e^{-E_v/T_\mathrm{vib}}}{\sum_{u=0}^{14} e^{-E_u/T_\mathrm{vib}}}, \qquad v = 0..14",
+        "fraction": r"\frac{[\mathrm H_2(v \ge v_{\min})]}{[\mathrm H_2]} = \sum_{v \ge v_{\min}} \frac{n_v}{n}",
+    },
+    assumptions=(
+        r"a prescribed single-temperature Boltzmann population, not solved vibrational kinetics: it underestimates the high-$v$ tail",
+        r"the H$_2$(X) ladder of Fantz and Wünderlich, table 4.1, $E_v$ from the potential minimum ($E_0 = 0.27504$ to $E_{14} = 4.72986$ eV)",
+    ),
+    references=(
+        "[Fantz and Wünderlich, At. Data Nucl. Data Tables 92, 853 (2006)](https://doi.org/10.1016/j.adt.2006.05.001)",
+    ),
+    components=("plasmacoll.vibrational.boltzmann_level_populations",),
+)
 @dataclass(frozen=True)
 class VibrationalDistribution:
     """A single-temperature Boltzmann population over a vibrational ladder.
@@ -165,6 +207,19 @@ class VibrationalDistribution:
         return float(xp.sum(levels * self.populations))
 
 
+@method(
+    equations={
+        "electronegativity": r"\frac{[\mathrm H^-]}{[e]} = r\,\frac{[\mathrm H_2(v \ge v_{\min})]}{[\mathrm H]}, \qquad r = 10, \quad v_{\min} = 4",
+    },
+    assumptions=(
+        r"a balance of dissociative-attachment production and detachment by H; $r$ the ratio of their rate coefficients (`rate_ratio`), an order-of-magnitude estimate",
+    ),
+    references=(
+        "Krištof et al., arXiv:1911.03319 (2019), eq. (11)",
+        "Kimura and Kasugai (2010)",
+    ),
+    components=("plasmacoll.vibrational.VibrationalDistribution",),
+)
 def estimate_electronegativity(
     distribution: VibrationalDistribution,
     hydrogen_atom_density: float,

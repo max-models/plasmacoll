@@ -5,17 +5,17 @@ meets the gas that leaks from the source: its ions are stripped (H- -> H, the
 loss of the accelerator), the stripped neutrals ionized (H -> H+), the positive
 ions neutralized by capture (H+ + H2 -> H + H2+), and every state ionizes the gas
 (X + H2 -> X + H2+ + e), whose slow ions the accelerator's field sends back
-towards the source (backstreaming). :class:`BeamGasReactions` holds these
+towards the source (backstreaming). `BeamGasReactions` holds these
 reactions with their cross sections against the projectile's energy and gives
 them both as charge-state cross sections at one energy
-(:meth:`~BeamGasReactions.transitions`, for
-:func:`~plasmacoll.charge_states.charge_state_fractions`) and as processes of
-:class:`~plasmacoll.mcc.MonteCarloCollisions` (:meth:`~BeamGasReactions.processes`,
+(`BeamGasReactions.transitions`, for
+`plasmacoll.charge_states.charge_state_fractions`) and as processes of
+`plasmacoll.mcc.MonteCarloCollisions` (`BeamGasReactions.processes`,
 ``stripping`` and ``beam_ionization``), so that markers and fractions use the
 same data. A gas profile along the beam is a
-:class:`~plasmacoll.background.DensityProfile` of the gas background.
+`plasmacoll.background.DensityProfile` of the gas background.
 
-:func:`hydrogen_beam_on_h2` assembles them for H2 gas from their sources:
+`hydrogen_beam_on_h2` assembles them for H2 gas from their sources:
 
 =====================  ==================================================  ===============
 reaction               cross section                                       status
@@ -31,7 +31,7 @@ H, H- + H2 -> H2+ + e  Rudd's proton cross section at the same speed       place
 The placeholders' ratios are those of the round 1 MeV D- numbers of
 wellbalanced's illustrative neutralizer (freeofcharge's ``GAS_NEUTRALIZER``);
 they give the right order of magnitude, not data, and every reaction says
-whether it is one (:attr:`BeamGasReaction.placeholder`). The capture fit is
+whether it is one (`BeamGasReaction.placeholder`). The capture fit is
 fitted to about 200 keV; above, its power-law tail is kept, an extrapolation.
 A deuterium beam takes the hydrogen data at the same speed (half the energy),
 as BBCNI (Hurlbatt et al., Plasma Phys. Control. Fusion 61, 105012, 2019) does
@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 
 import cunumpy as xp
 import numpy as np
+from methodcard import method
 
 from plasmacoll.charge_states import (
     HYDROGEN_CHARGES,
@@ -120,7 +121,7 @@ class BeamGasReactions:
         charges: The charge of every state in e.
         sharing_energy: The width ``w`` in eV of the energy of the electrons
             the ionization ejects (see ``beam_ionization`` in
-            :mod:`plasmacoll.mcc`).
+            `plasmacoll.mcc`).
     """
 
     reactions: Sequence[BeamGasReaction]
@@ -260,6 +261,27 @@ def _scaled(sigma: CrossSection, factor: float, label: str) -> CrossSection:
     )
 
 
+@method(
+    equations={
+        "same_speed": r"\sigma_\mathrm{D}(E) = \sigma_\mathrm{H}\Big(E\,\frac{m_\mathrm{H}}{m_\mathrm{D}}\Big), \qquad E_\mathrm{th,D} = E_\mathrm{th,H}\,\frac{m_\mathrm{D}}{m_\mathrm{H}}",
+        "placeholders": r"\sigma_{-\to+} = 0.042\,\sigma_{-\to0}, \qquad \sigma_{0\to+} = 0.31\,\sigma_{-\to0}",
+        "ionization": r"\sigma_\mathrm{iz}^{X}(E) = \sigma_\mathrm{Rudd}(T), \qquad T = \frac{m_e}{m_X}\,E \quad \text{for every state } X",
+    },
+    assumptions=(
+        r"H$^-$ stripping from Janev eq. (159); H$^+$ capture from eqs. (144), (145), fitted to about 200 keV, the fit's tail kept above (an extrapolation)",
+        r"placeholders, labelled as such: double stripping, the stripping of the neutrals (ratios of round 1 MeV D$^-$ numbers) and the gas ionization by H and H$^-$",
+        r"the three states share one table (their masses differ by electrons); 241 logarithmic energies from 1 eV to 2 MeV, the last value beyond",
+    ),
+    references=(
+        "Janev, Reiter and Samm, Jül-4105 (2003), eqs. (144), (145), (159)",
+        "[Rudd, Kim, Madison and Gay, Rev. Mod. Phys. 64, 441 (1992)](https://doi.org/10.1103/RevModPhys.64.441)",
+        "Hurlbatt et al., Plasma Phys. Control. Fusion 61, 105012 (2019)",
+    ),
+    components=(
+        "plasmacoll.janev.HydrogenFit",
+        "plasmacoll.secondaries.RuddIonization",
+    ),
+)
 def hydrogen_beam_on_h2(
     isotope: str = "H",
     max_energy: float = 2.0e6,

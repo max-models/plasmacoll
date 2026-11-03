@@ -20,11 +20,11 @@ The ten parameters ``A1 ... D2, alpha`` are fitted per target (Table V of the
 1992 review). The model depends on the projectile only through its speed, so a
 deuteron (or a fast deuterium atom, to the extent the model holds for it) at
 ``T_0`` is a proton at ``T_0 m_p / m_d``. Integrated over ``W`` it gives the
-total ionization cross section (:meth:`RuddIonization.total`) and the mean
-energy of the secondary electrons (:meth:`RuddIonization.mean_energy`), the
+total ionization cross section (`RuddIonization.total`) and the mean
+energy of the secondary electrons (`RuddIonization.mean_energy`), the
 source terms of a plasma that a beam ionizes.
 
-:data:`RUDD_H2` holds the H2 parameters of the review (Table V, binding energy
+`RUDD_H2` holds the H2 parameters of the review (Table V, binding energy
 from Table I(a)); it reproduces its Table VII of recommended H+ + H2 cross
 sections to 1%.
 """
@@ -36,6 +36,7 @@ from dataclasses import dataclass
 
 import cunumpy as xp
 import numpy as np
+from methodcard import ConvergenceProblem, Rule, method
 
 from plasmacoll._types import Array
 from plasmacoll.constants import ELECTRON_MASS, PROTON_MASS
@@ -109,6 +110,21 @@ class RuddShell:
         """``w_c = 4 v^2 - 2 v - R / (4 I)`` (Eq. (42))."""
         return 4.0 * v * v - 2.0 * v - RYDBERG_ENERGY / (4.0 * self.binding_energy)
 
+    @method(
+        equations={
+            "differential": r"\frac{d\sigma}{dW} = \frac{S}{I}\,\frac{F_1 + F_2 w}{(1 + w)^3}\,\frac{1}{1 + e^{\alpha(w - w_c)/v}}, \qquad w = \frac{W}{I}, \quad v = \sqrt{\frac{T}{I}}",
+            "parameters": r"S = 4\pi a_0^2 N\Big(\frac{R}{I}\Big)^2, \qquad w_c = 4v^2 - 2v - \frac{R}{4I}, \qquad T = \frac{m_e}{M}\,T_0",
+            "factors": r"F_1 = L_1 + H_1, \quad F_2 = \frac{L_2 H_2}{L_2 + H_2}, \quad L_1 = \frac{C_1 v^{D_1}}{1 + E_1 v^{D_1 + 4}}, \quad H_1 = \frac{A_1\ln(1 + v^2)}{v^2 + B_1/v^2}, \quad L_2 = C_2 v^{D_2}, \quad H_2 = \frac{A_2}{v^2} + \frac{B_2}{v^4}",
+        },
+        assumptions=(
+            r"$W$ the secondary energy, $I$ and $N$ the shell's binding energy and electrons, $T_0$ and $M$ the projectile's energy and mass",
+            r"the cutoff evaluated as $\tfrac12\big(1 - \tanh\tfrac x2\big)$, which does not overflow",
+        ),
+        references=(
+            "[Rudd, Kim, Madison and Gay, Rev. Mod. Phys. 64, 441 (1992)](https://doi.org/10.1103/RevModPhys.64.441), eqs. (41)-(48)",
+        ),
+        symbolic=lambda: _differential_rules(),
+    )
     def differential(self, secondary_energy: np.ndarray, electron_energy: float):
         """``dsigma/dW`` in m^2/eV of this shell (Eq. (41))."""
         v = self.reduced_speed(electron_energy)
@@ -126,6 +142,19 @@ class RuddShell:
         cutoff = 0.5 * (1.0 - np.tanh(0.5 * x))
         return s / self.binding_energy * (f1 + f2 * w) / (1.0 + w) ** 3 * cutoff
 
+    @method(
+        equations={
+            "moments": r"\sigma = \int_0^\infty \frac{d\sigma}{dW}\,dW, \qquad \sigma\langle W\rangle = \int_0^\infty W\,\frac{d\sigma}{dW}\,dW",
+            "substitution": r"s = \ln(1 + w), \qquad dW = I(1 + w)\,ds, \qquad s \in \Big[0,\ \ln\Big(1 + \max(w_c, 0) + 60\,\frac{v}{\alpha}\Big)\Big]",
+            "simpson": r"\int_0^{s_{\max}} f\,ds \approx \frac{h}{3}\big(f_0 + 4f_1 + 2f_2 + \dots + 4f_{P-2} + f_{P-1}\big)",
+        },
+        order=4,
+        assumptions=(
+            r"$P$ = 4001 points, where the $(1 + w)^{-3}$ fall-off is smooth; the tail beyond 60 cutoff widths $v/\alpha$ is dropped",
+        ),
+        components=("plasmacoll.secondaries.RuddShell.differential",),
+        problem=lambda: _moments_problem(),
+    )
     def moments(self, electron_energy: float) -> tuple[float, float]:
         """``int dsigma/dW dW`` (m^2) and ``int W dsigma/dW dW`` (m^2 eV) of this shell.
 
@@ -147,6 +176,24 @@ class RuddShell:
         return float(weights @ integrand), float(weights @ (integrand * energy))
 
 
+@method(
+    equations={
+        "speed": r"T = \frac{m_e}{M}\,T_0",
+        "total": r"\sigma_\mathrm{iz}(T_0) = \sum_i \int_0^\infty \frac{d\sigma_i}{dW}\,dW, \qquad \langle W\rangle = \frac{\sum_i \int W\,\frac{d\sigma_i}{dW}\,dW}{\sigma_\mathrm{iz}}",
+    },
+    assumptions=(
+        r"the model depends on the projectile only through its speed: a deuteron at $T_0$ is a proton at $T_0\,m_p/m_d$",
+        r"`RUDD_H2`: Table V of the review, $I = 15.43$ eV, $N = 2$; it reproduces Table VII of recommended H$^+$ + H$_2$ cross sections to 1 %",
+    ),
+    references=(
+        "[Rudd, Kim, Madison and Gay, Rev. Mod. Phys. 64, 441 (1992)](https://doi.org/10.1103/RevModPhys.64.441)",
+        "[Rudd, Phys. Rev. A 38, 6129 (1988)](https://doi.org/10.1103/PhysRevA.38.6129)",
+    ),
+    components=(
+        "plasmacoll.secondaries.RuddShell.differential",
+        "plasmacoll.secondaries.RuddShell.moments",
+    ),
+)
 @dataclass(frozen=True)
 class RuddIonization:
     """Ionization of a target by a fast ion, after Rudd; see the module docstring.
@@ -238,3 +285,58 @@ RUDD_H2 = RuddIonization(
     ],
     label="Rudd H2",
 )
+
+
+def _differential_rules() -> dict:
+    """The SymPy rule of `RuddShell.differential` for H2 (for the tests)."""
+    import sympy
+
+    shell = RUDD_H2.shells[0]
+    big_w, t = sympy.symbols("secondary_energy electron_energy", positive=True)
+    f = sympy.Float
+    i, r = f(shell.binding_energy), f(RYDBERG_ENERGY)
+    w, v = big_w / i, sympy.sqrt(t / i)
+    a1, b1, c1, d1, e1 = (
+        f(x) for x in (shell.a1, shell.b1, shell.c1, shell.d1, shell.e1)
+    )
+    a2, b2, c2, d2 = (f(x) for x in (shell.a2, shell.b2, shell.c2, shell.d2))
+    f1 = c1 * v**d1 / (1 + e1 * v ** (d1 + 4)) + a1 * sympy.log(1 + v**2) / (
+        v**2 + b1 / v**2
+    )
+    low2, high2 = c2 * v**d2, a2 / v**2 + b2 / v**4
+    f2 = low2 * high2 / (low2 + high2)
+    s = 4 * sympy.pi * f(BOHR_RADIUS) ** 2 * f(shell.electrons) * (r / i) ** 2
+    cutoff = 4 * v**2 - 2 * v - r / (4 * i)
+    rule = s / i * (f1 + f2 * w) / (1 + w) ** 3
+    rule /= 1 + sympy.exp(f(shell.alpha) * (w - cutoff) / v)
+    return {
+        "differential": Rule(
+            rule,
+            implementation=lambda secondary_energy, electron_energy: shell.differential(
+                np.asarray(secondary_energy), electron_energy
+            ),
+            ranges={"secondary_energy": (0.0, 200.0), "electron_energy": (10.0, 1.0e3)},
+        )
+    }
+
+
+def _moments_problem() -> ConvergenceProblem:
+    """The total H2 cross section with fewer Simpson points, against the default."""
+    global _POINTS
+
+    shell = RUDD_H2.shells[0]
+    electron_energy = 50.0
+    v = shell.reduced_speed(electron_energy)
+    span = np.log1p(max(shell.cutoff(v), 0.0) + _TAIL * v / shell.alpha)
+    reference = shell.moments(electron_energy)[0]
+
+    def error(step: float) -> float:
+        global _POINTS
+
+        default, _POINTS = _POINTS, round(span / step) + 1
+        try:
+            return abs(shell.moments(electron_energy)[0] - reference) / reference
+        finally:
+            _POINTS = default
+
+    return ConvergenceProblem(error, steps=[span / 64, span / 128, span / 256])

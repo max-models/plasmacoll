@@ -22,6 +22,7 @@ classifiers = [
 ]
 dependencies = [
   "cunumpy>=0.5",
+  "methodcard",
   "numpy",
   "scope-profiler>=0.7.5",
 ]
@@ -42,7 +43,7 @@ optional-dependencies.docs = [
   "nbclient>=0.11.0",
   "nbformat>=5.11.1",
 ]
-optional-dependencies.test = [ "pytest", "pytest-cov" ]
+optional-dependencies.test = [ "methodcard[symbolic]", "pytest", "pytest-cov" ]
 urls."Source" = "https://github.com/max-models/plasmacoll"
 
 [project.entry-points."scope_profiler.opt_in_tags"]
@@ -82,6 +83,7 @@ typeCheckingMode = "standard"
 pythonpath = [ "src" ]
 testpaths = [ "src" ]
 addopts = "-ra"
+markers = [ "convergence: an order-of-accuracy test of a method card" ]
 # the kinematics tests make every marker collide in one step on purpose; the warning
 # itself is tested explicitly in test_mcc_extensions.py
 filterwarnings = [ "ignore:.*collision probability per step:RuntimeWarning" ]
@@ -108,4 +110,5 @@ allowed-unresolved-imports = [ "cupy" ]
 # uv.lock); PRs to main and the release use PyPI only (CI sets UV_NO_SOURCES).
 [tool.uv.sources]
 cunumpy = { git = "https://github.com/max-models/cunumpy", branch = "devel" }
+methodcard = { git = "https://github.com/max-models/methodcard", branch = "devel" }
 scope-profiler = { git = "https://github.com/max-models/scope-profiler", branch = "devel" }
