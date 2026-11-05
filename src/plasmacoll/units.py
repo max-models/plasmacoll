@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import ast
 import dataclasses
+import functools
 import math
 import re
 import sys
@@ -131,7 +132,7 @@ def to_unit(value: Any, unit: str, name: str = "value") -> Any:
     is taken as already in ``unit``. Sequences and arrays become tuples, and
     mappings keep their keys. ``None`` stays ``None``.
     """
-    if value is None or isinstance(value, bool):
+    if type(value) is float or value is None or isinstance(value, bool):
         return value
     if isinstance(value, str):
         value = parse_quantity(value)
@@ -199,6 +200,20 @@ def rate_to_si(value: Any, name: str = "rate") -> float | None:
     return float(value)
 
 
+@functools.cache
+def _unit_fields(cls: type) -> tuple[tuple[str, str, Any], ...]:
+    """Return the name, unit and converter of each field of ``cls`` with a unit."""
+    return tuple(
+        (
+            entry.name,
+            entry.metadata["unit"],
+            to_array if entry.metadata.get("array") else to_unit,
+        )
+        for entry in dataclasses.fields(cls)
+        if "unit" in entry.metadata
+    )
+
+
 def convert_units(obj: Any) -> None:
     """Convert every field of the dataclass ``obj`` that declares a unit.
 
@@ -206,12 +221,11 @@ def convert_units(obj: Any) -> None:
     array field (``array=True``) goes through :func:`to_array`, the others
     through :func:`to_unit`. Works on frozen dataclasses too.
     """
-    for entry in dataclasses.fields(obj):
-        unit = entry.metadata.get("unit")
-        if unit is not None:
-            convert = to_array if entry.metadata.get("array") else to_unit
-            value = convert(getattr(obj, entry.name), unit, entry.name)
-            object.__setattr__(obj, entry.name, value)
+    for name, unit, convert in _unit_fields(type(obj)):
+        value = getattr(obj, name)
+        # the common case, a number already in its unit, costs one type check
+        if type(value) is not float:
+            object.__setattr__(obj, name, convert(value, unit, name))
 
 
 def _number(value: float) -> str:
