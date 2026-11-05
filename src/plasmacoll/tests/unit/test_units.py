@@ -6,6 +6,7 @@ import dataclasses
 import math
 import subprocess
 import sys
+from typing import Any
 
 import astropy.units as u
 import numpy as np
@@ -22,6 +23,7 @@ from plasmacoll.units import (
     to_array,
     to_unit,
     unit_field,
+    unit_metadata,
     with_unit,
 )
 
@@ -161,3 +163,28 @@ def test_numbers_do_not_import_astropy() -> None:
         "assert 'astropy' not in sys.modules, 'astropy was imported'\n"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+@dataclasses.dataclass(frozen=True)
+class _Plasma:
+    density: Any = dataclasses.field(metadata=unit_metadata("m^-3", array=True))
+    name: str = "plasma"
+    temperature: Any = unit_field("eV", 1.0, array=True)
+    length: float = dataclasses.field(default=1.0, metadata=unit_metadata("m"))
+
+    def __post_init__(self) -> None:
+        convert_units(self)
+
+
+def test_unit_metadata_and_array_fields() -> None:
+    """A required field through ``unit_metadata``; array fields stay arrays."""
+    density = np.array([1e17, 2e17])
+    plasma = _Plasma(density, temperature=[300, 600] * u.K, length="2 mm")
+    assert plasma.density is density
+    assert isinstance(plasma.temperature, np.ndarray)
+    assert plasma.temperature == pytest.approx(np.array([300.0, 600.0]) / KELVIN_PER_EV)
+    assert plasma.length == pytest.approx(2e-3)
+    assert _Plasma("1e11 cm-3").density == pytest.approx(1e17)
+    assert unit_metadata("m") == {"unit": "m", "array": False}
+    with pytest.raises(ValueError, match="density must be in units"):
+        _Plasma(1 * u.s)

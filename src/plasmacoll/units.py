@@ -42,6 +42,7 @@ __all__ = [
     "to_array",
     "to_unit",
     "unit_field",
+    "unit_metadata",
     "with_unit",
 ]
 
@@ -63,13 +64,34 @@ def is_quantity(value: Any) -> bool:
     return units is not None and isinstance(value, units.Quantity)
 
 
-def unit_field(unit: str, default: Any = dataclasses.MISSING, **kwargs: Any) -> Any:
-    """Return a dataclass field kept in ``unit``.
+def unit_metadata(unit: str, *, array: bool = False) -> dict[str, Any]:
+    """Return the field metadata that declares ``unit``, for ``dataclasses.field``.
+
+    The form for a field without a default, which type checkers read as a
+    required field (they read any other call as a default)::
+
+        density: float = dataclasses.field(metadata=unit_metadata("m^-3"))
+
+    ``array=True`` keeps arrays as arrays (:func:`to_array`) instead of
+    turning them into tuples (:func:`to_unit`).
+    """
+    return {"unit": unit, "array": array}
+
+
+def unit_field(
+    unit: str, default: Any = dataclasses.MISSING, *, array: bool = False, **kwargs: Any
+) -> Any:
+    """Return a dataclass field kept in ``unit``, with a default.
 
     :func:`convert_units` turns a Quantity or a string given for it into
-    numbers in ``unit``.
+    numbers in ``unit``; ``array=True`` keeps arrays as arrays. A field without
+    a default is better declared with
+    ``dataclasses.field(metadata=unit_metadata(unit))``, which type checkers
+    read as required.
     """
-    return dataclasses.field(default=default, metadata={"unit": unit}, **kwargs)
+    return dataclasses.field(
+        default=default, metadata=unit_metadata(unit, array=array), **kwargs
+    )
 
 
 def parse_quantity(value: str) -> Any:
@@ -178,14 +200,17 @@ def rate_to_si(value: Any, name: str = "rate") -> float | None:
 
 
 def convert_units(obj: Any) -> None:
-    """Convert every field of the dataclass ``obj`` declared with :func:`unit_field`.
+    """Convert every field of the dataclass ``obj`` that declares a unit.
 
-    Works on frozen dataclasses too.
+    The fields declared with :func:`unit_field` or :func:`unit_metadata`; an
+    array field (``array=True``) goes through :func:`to_array`, the others
+    through :func:`to_unit`. Works on frozen dataclasses too.
     """
     for entry in dataclasses.fields(obj):
         unit = entry.metadata.get("unit")
         if unit is not None:
-            value = to_unit(getattr(obj, entry.name), unit, entry.name)
+            convert = to_array if entry.metadata.get("array") else to_unit
+            value = convert(getattr(obj, entry.name), unit, entry.name)
             object.__setattr__(obj, entry.name, value)
 
 
