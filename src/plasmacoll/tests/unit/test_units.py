@@ -6,6 +6,7 @@ import dataclasses
 import math
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 import astropy.units as u
@@ -209,3 +210,38 @@ def test_to_array_on_mappings_and_nested_strings() -> None:
     # a list of plain numbers is not converted
     plain = [[1.0, 2.0]]
     assert to_array(plain, "m") is plain
+
+
+def test_townsend_bare_units_and_complex_values() -> None:
+    from plasmacoll import units
+
+    assert to_unit("10 Td", "V m2") == pytest.approx(1e-20)
+    assert to_unit(10 * units.Td, "townsend") == pytest.approx(10.0)
+    assert to_array(["1 Td", "2 Td"], "townsend") == pytest.approx(np.array([1, 2]))
+    assert to_unit("1e-20 V m2", "townsend") == pytest.approx(10.0)
+    # a bare unit is one of it: a scale
+    assert to_unit(u.keV, "eV") == pytest.approx(1000.0)
+    assert to_array(u.cm**2, "m^2") == pytest.approx(1e-4)
+    # complex values keep their imaginary part
+    assert to_unit((1 + 2j) * u.kV, "V") == pytest.approx(1000 + 2000j)
+    assert to_unit(np.array([1 + 1j]), "V") == (1 + 1j,)
+    assert to_array(1j * u.kV, "V") == pytest.approx(1000j)
+    assert to_unit(np.array(2.0), "m") == 2.0
+    with pytest.raises(AttributeError, match="no attribute 'Tx'"):
+        units.Tx  # noqa: B018
+
+
+def test_cupy_arrays_in_to_unit() -> None:
+    """A CuPy array is read on the host (here cunumpy's fake CuPy)."""
+    from cunumpy.kernel_testing import run_in_fake_cupy_subprocess
+
+    code = """
+import cunumpy as xp
+xp.set_backend("cupy")
+from plasmacoll.units import to_unit
+drift = xp.asarray([1.0, 0.0, 2.0])
+assert to_unit(drift, "m/s") == (1.0, 0.0, 2.0), to_unit(drift, "m/s")
+print("ok")
+"""
+    src = str(Path(__file__).resolve().parents[3])
+    assert "ok" in run_in_fake_cupy_subprocess(code, env={"PYTHONPATH": src}).stdout

@@ -49,14 +49,30 @@ __all__ = [
 
 
 def _astropy_units() -> Any:
-    """Return ``astropy.units``, importing it on first use."""
+    """Return ``astropy.units``, importing it on first use, with the Townsend enabled."""
     try:
         import astropy.units as u  # noqa: PLC0415
     except ImportError as error:  # pragma: no cover - astropy is a test dependency
         raise ImportError(
             "quantities need astropy: pip install plasmacoll[units]"
         ) from error
+    # astropy's "Td" is a tera-day, so the Townsend is "townsend" there; the
+    # strings this module reads take "Td" as the Townsend (see parse_quantity)
+    if "townsend" not in u.get_current_unit_registry().registry:
+        townsend = u.def_unit(
+            "townsend",
+            1e-21 * u.V * u.m**2,
+            doc="Townsend: the unit of a reduced electric field E/N",
+        )
+        u.add_enabled_units([townsend])
     return u
+
+
+def __getattr__(name: str) -> Any:
+    """Return ``Td``, the Townsend (1e-21 V m^2) as an astropy unit, on first use."""
+    if name == "Td":
+        return _astropy_units().Unit("townsend")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def is_quantity(value: Any) -> bool:
@@ -96,8 +112,12 @@ def unit_field(
 
 
 def parse_quantity(value: str) -> Any:
-    """Return the Quantity of a string such as ``"0.1 ns"`` or ``"[[0, 1], [2, 3]] mm"``."""
+    """Return the Quantity of a string such as ``"0.1 ns"`` or ``"[[0, 1], [2, 3]] mm"``.
+
+    ``Td`` is the Townsend (in astropy it would be a tera-day).
+    """
     u = _astropy_units()
+    value = re.sub(r"\bTd\b", "townsend", value)
     try:
         return u.Quantity(value)
     except (TypeError, ValueError):
@@ -132,6 +152,14 @@ def _check_not_a_unit_mapping(value: Mapping, name: str) -> None:
         )
 
 
+def _unit_as_quantity(value: Any) -> Any:
+    """Return a bare astropy unit (``u.keV``) as one of it; anything else as it is."""
+    units = sys.modules.get("astropy.units")
+    if units is not None and isinstance(value, units.UnitBase):
+        return 1.0 * value
+    return value
+
+
 def to_unit(value: Any, unit: str, name: str = "value") -> Any:
     """Return ``value`` as plain numbers in ``unit``.
 
@@ -144,6 +172,7 @@ def to_unit(value: Any, unit: str, name: str = "value") -> Any:
         return value
     if isinstance(value, str):
         value = parse_quantity(value)
+    value = _unit_as_quantity(value)
     if is_quantity(value):
         value = _magnitude(value, unit, name)
     if isinstance(value, Mapping):
@@ -151,12 +180,16 @@ def to_unit(value: Any, unit: str, name: str = "value") -> Any:
         return {
             key: to_unit(item, unit, f"{name}[{key!r}]") for key, item in value.items()
         }
+    if not isinstance(value, np.ndarray) and hasattr(value, "__cuda_array_interface__"):
+        value = value.get()  # a CuPy array: its values on the host
     if isinstance(value, np.ndarray):
         if value.ndim == 0:
-            return float(value)
+            return to_unit(value[()], unit, name)
         return tuple(to_unit(item, unit, name) for item in value)
     if isinstance(value, (list, tuple)):
         return tuple(to_unit(item, unit, name) for item in value)
+    if isinstance(value, (complex, np.complexfloating)):
+        return complex(value)
     if isinstance(value, (int, float, np.number)):
         return float(value)
     raise TypeError(f"{name} must be a number or a quantity, got {value!r}")
@@ -180,9 +213,14 @@ def to_array(value: Any, unit: str, name: str = "value") -> Any:
     """
     if isinstance(value, str):
         value = parse_quantity(value)
+    value = _unit_as_quantity(value)
     if is_quantity(value):
         magnitude = _magnitude(value, unit, name)
-        return float(magnitude) if np.ndim(magnitude) == 0 else np.asarray(magnitude)
+        if np.ndim(magnitude) == 0:
+            return (
+                complex(magnitude) if np.iscomplexobj(magnitude) else float(magnitude)
+            )
+        return np.asarray(magnitude)
     if isinstance(value, Mapping):
         _check_not_a_unit_mapping(value, name)
         return {

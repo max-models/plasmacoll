@@ -5,6 +5,23 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `plasmacoll.units.unit_metadata`: a unit field without a default, as
+  `dataclasses.field(metadata=unit_metadata("m"))`, which type checkers read as required (they
+  read `unit_field("m")` as a default). `array=True` on both keeps an array an array.
+- `to_array` converts mappings value by value and nested lists of quantity strings, the
+  configuration-file form of a 2D array.
+- The Townsend: `plasmacoll.units.Td` and `"80 Td"` in strings (astropy's own `Td` is a
+  tera-day, so the unit is called `townsend` there). `solve_eedf` and `swarm_table` take it.
+- `to_unit` and `to_array` take a bare unit as a scale (`u.keV`), complex values, and `to_unit`
+  CuPy arrays.
+
+### Changed
+
+- `convert_units` skips fields that are already floats and caches each class's unit fields:
+  building a `NeutralBackground` of plain numbers takes 2.6 times less time.
+
 ## [0.5.0] - 2026-11-03
 
 ### Added
