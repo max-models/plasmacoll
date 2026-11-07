@@ -188,3 +188,24 @@ def test_unit_metadata_and_array_fields() -> None:
     assert unit_metadata("m") == {"unit": "m", "array": False}
     with pytest.raises(ValueError, match="density must be in units"):
         _Plasma(1 * u.s)
+
+
+def test_to_array_on_mappings_and_nested_strings() -> None:
+    profile = np.array([1.0, 2.0])
+    fixed = to_array(
+        {"e": profile, "Ar+": [1, 2] * u.cm**-3, "Ar": "1e21 m^-3"}, "m^-3"
+    )
+    assert fixed["e"] is profile
+    assert fixed["Ar+"] == pytest.approx(np.array([1e6, 2e6]))
+    assert fixed["Ar"] == pytest.approx(1e21)
+    with pytest.raises(ValueError, match="as a string such as"):
+        to_array({"e": {"value": 1.0, "unit": "m^-3"}}, "m^-3")
+    # the configuration-file form of a 2D array reads back as an array
+    positions = np.array([[0.0, 1e-3], [2e-3, 3e-3]])
+    written = with_unit(positions, "m")
+    assert written == [["0 m", "0.001 m"], ["0.002 m", "0.003 m"]]
+    assert np.array_equal(to_array(written, "m"), positions)
+    assert np.array_equal(to_array([["1 mm", 2e-3]], "m"), np.array([[1e-3, 2e-3]]))
+    # a list of plain numbers is not converted
+    plain = [[1.0, 2.0]]
+    assert to_array(plain, "m") is plain

@@ -124,6 +124,14 @@ def _magnitude(value: Any, unit: str, name: str) -> Any:
         raise ValueError(f"{name} must be {wanted}, got {value}") from error
 
 
+def _check_not_a_unit_mapping(value: Mapping, name: str) -> None:
+    """Reject the old ``{value: ..., unit: ...}`` form of a quantity."""
+    if "unit" in value:
+        raise ValueError(
+            f"{name}: write a quantity as a string such as '2.5 mm', not {dict(value)}"
+        )
+
+
 def to_unit(value: Any, unit: str, name: str = "value") -> Any:
     """Return ``value`` as plain numbers in ``unit``.
 
@@ -139,11 +147,7 @@ def to_unit(value: Any, unit: str, name: str = "value") -> Any:
     if is_quantity(value):
         value = _magnitude(value, unit, name)
     if isinstance(value, Mapping):
-        if "unit" in value:
-            raise ValueError(
-                f"{name}: write a quantity as a string such as '2.5 mm', not "
-                f"{dict(value)}"
-            )
+        _check_not_a_unit_mapping(value, name)
         return {
             key: to_unit(item, unit, f"{name}[{key!r}]") for key, item in value.items()
         }
@@ -158,22 +162,33 @@ def to_unit(value: Any, unit: str, name: str = "value") -> Any:
     raise TypeError(f"{name} must be a number or a quantity, got {value!r}")
 
 
+def _has_quantities(value: Any) -> bool:
+    """Return whether a (nested) list holds a string or a Quantity anywhere."""
+    if isinstance(value, str) or is_quantity(value):
+        return True
+    return isinstance(value, (list, tuple)) and any(_has_quantities(v) for v in value)
+
+
 def to_array(value: Any, unit: str, name: str = "value") -> Any:
     """Return ``value`` in ``unit``, keeping arrays as arrays.
 
     For arguments that may be arrays (a profile, a field): a Quantity or a
-    string is converted to a float or a NumPy array, a list of quantities to a
-    NumPy array, and anything else, a number or an array of any backend (NumPy,
-    CuPy), is returned unchanged.
+    string is converted to a float or a NumPy array, a (nested) list with
+    quantities or strings in it to a NumPy array, a mapping value by value,
+    and anything else, a number or an array of any backend (NumPy, CuPy), is
+    returned unchanged.
     """
     if isinstance(value, str):
         value = parse_quantity(value)
     if is_quantity(value):
         magnitude = _magnitude(value, unit, name)
         return float(magnitude) if np.ndim(magnitude) == 0 else np.asarray(magnitude)
-    if isinstance(value, (list, tuple)) and any(
-        isinstance(item, str) or is_quantity(item) for item in value
-    ):
+    if isinstance(value, Mapping):
+        _check_not_a_unit_mapping(value, name)
+        return {
+            key: to_array(item, unit, f"{name}[{key!r}]") for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)) and _has_quantities(value):
         return np.asarray(to_unit(value, unit, name), dtype=float)
     return value
 
