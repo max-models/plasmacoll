@@ -6,6 +6,8 @@ import dataclasses
 import math
 import subprocess
 import sys
+from pathlib import Path
+from typing import Any
 
 import astropy.units as u
 import numpy as np
@@ -22,6 +24,7 @@ from plasmacoll.units import (
     to_array,
     to_unit,
     unit_field,
+    unit_metadata,
     with_unit,
 )
 
@@ -161,3 +164,84 @@ def test_numbers_do_not_import_astropy() -> None:
         "assert 'astropy' not in sys.modules, 'astropy was imported'\n"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+@dataclasses.dataclass(frozen=True)
+class _Plasma:
+    density: Any = dataclasses.field(metadata=unit_metadata("m^-3", array=True))
+    name: str = "plasma"
+    temperature: Any = unit_field("eV", 1.0, array=True)
+    length: float = dataclasses.field(default=1.0, metadata=unit_metadata("m"))
+
+    def __post_init__(self) -> None:
+        convert_units(self)
+
+
+def test_unit_metadata_and_array_fields() -> None:
+    """A required field through ``unit_metadata``; array fields stay arrays."""
+    density = np.array([1e17, 2e17])
+    plasma = _Plasma(density, temperature=[300, 600] * u.K, length="2 mm")
+    assert plasma.density is density
+    assert isinstance(plasma.temperature, np.ndarray)
+    assert plasma.temperature == pytest.approx(np.array([300.0, 600.0]) / KELVIN_PER_EV)
+    assert plasma.length == pytest.approx(2e-3)
+    assert _Plasma("1e11 cm-3").density == pytest.approx(1e17)
+    assert unit_metadata("m") == {"unit": "m", "array": False}
+    with pytest.raises(ValueError, match="density must be in units"):
+        _Plasma(1 * u.s)
+
+
+def test_to_array_on_mappings_and_nested_strings() -> None:
+    profile = np.array([1.0, 2.0])
+    fixed = to_array(
+        {"e": profile, "Ar+": [1, 2] * u.cm**-3, "Ar": "1e21 m^-3"}, "m^-3"
+    )
+    assert fixed["e"] is profile
+    assert fixed["Ar+"] == pytest.approx(np.array([1e6, 2e6]))
+    assert fixed["Ar"] == pytest.approx(1e21)
+    with pytest.raises(ValueError, match="as a string such as"):
+        to_array({"e": {"value": 1.0, "unit": "m^-3"}}, "m^-3")
+    # the configuration-file form of a 2D array reads back as an array
+    positions = np.array([[0.0, 1e-3], [2e-3, 3e-3]])
+    written = with_unit(positions, "m")
+    assert written == [["0 m", "0.001 m"], ["0.002 m", "0.003 m"]]
+    assert np.array_equal(to_array(written, "m"), positions)
+    assert np.array_equal(to_array([["1 mm", 2e-3]], "m"), np.array([[1e-3, 2e-3]]))
+    # a list of plain numbers is not converted
+    plain = [[1.0, 2.0]]
+    assert to_array(plain, "m") is plain
+
+
+def test_townsend_bare_units_and_complex_values() -> None:
+    from plasmacoll import units
+
+    assert to_unit("10 Td", "V m2") == pytest.approx(1e-20)
+    assert to_unit(10 * units.Td, "townsend") == pytest.approx(10.0)
+    assert to_array(["1 Td", "2 Td"], "townsend") == pytest.approx(np.array([1, 2]))
+    assert to_unit("1e-20 V m2", "townsend") == pytest.approx(10.0)
+    # a bare unit is one of it: a scale
+    assert to_unit(u.keV, "eV") == pytest.approx(1000.0)
+    assert to_array(u.cm**2, "m^2") == pytest.approx(1e-4)
+    # complex values keep their imaginary part
+    assert to_unit((1 + 2j) * u.kV, "V") == pytest.approx(1000 + 2000j)
+    assert to_unit(np.array([1 + 1j]), "V") == (1 + 1j,)
+    assert to_array(1j * u.kV, "V") == pytest.approx(1000j)
+    assert to_unit(np.array(2.0), "m") == 2.0
+    with pytest.raises(AttributeError, match="no attribute 'Tx'"):
+        units.Tx  # noqa: B018
+
+
+def test_cupy_arrays_in_to_unit() -> None:
+    """A CuPy array is read on the host (here cunumpy's fake CuPy)."""
+    from cunumpy.kernel_testing import run_in_fake_cupy_subprocess
+
+    code = """
+import cunumpy as xp
+xp.set_backend("cupy")
+from plasmacoll.units import to_unit
+drift = xp.asarray([1.0, 0.0, 2.0])
+assert to_unit(drift, "m/s") == (1.0, 0.0, 2.0), to_unit(drift, "m/s")
+print("ok")
+"""
+    src = str(Path(__file__).resolve().parents[3])
+    assert "ok" in run_in_fake_cupy_subprocess(code, env={"PYTHONPATH": src}).stdout
