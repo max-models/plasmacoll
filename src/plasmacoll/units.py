@@ -254,7 +254,7 @@ def rate_to_si(value: Any, name: str = "rate") -> float | None:
 
 
 @functools.cache
-def _unit_fields(cls: type) -> tuple[tuple[str, str, Any], ...]:
+def _unit_fields(cls: Any) -> tuple[tuple[str, str, Any], ...]:
     """Return the name, unit and converter of each field of ``cls`` with a unit."""
     return tuple(
         (
