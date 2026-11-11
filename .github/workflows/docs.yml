@@ -28,6 +28,7 @@ jobs:
         getting-started/installation/index.html
         guides/null-collision-method/index.html
         examples/02-relaxation/index.html
+        examples/02-relaxation/1.plotly.json
         numerics/index.html
         numerics/mcc/index.html
         numerics/boltzmann/index.html

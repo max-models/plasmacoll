@@ -43,6 +43,7 @@ optional-dependencies.docs = [
   "matplotlib",
   "nbclient>=0.11.0",
   "nbformat>=5.11.1",
+  "plasma-plots[web]>=0.2.3",
 ]
 optional-dependencies.test = [ "astropy", "methodcard[symbolic]", "pytest", "pytest-cov" ]
 optional-dependencies.units = [ "astropy" ]
@@ -118,4 +119,5 @@ rules = { invalid-argument-type = "ignore" }
 [tool.uv.sources]
 cunumpy = { git = "https://github.com/max-models/cunumpy", branch = "devel" }
 methodcard = { git = "https://github.com/max-models/methodcard", branch = "devel" }
+plasma-plots = { git = "https://github.com/max-models/plasma-plots", branch = "devel" }
 scope-profiler = { git = "https://github.com/max-models/scope-profiler", branch = "devel" }

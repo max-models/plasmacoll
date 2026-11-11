@@ -19,6 +19,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The figures of the docs are interactive Plotly figures in the site's colours, drawn with
+  plasma-plots (now in the `docs` extra), one figure per
+  plot and with their formulas typeset as LaTeX.
 - `convert_units` skips fields that are already floats and caches each class's unit fields:
   building a `NeutralBackground` of plain numbers takes 2.6 times less time.
 
