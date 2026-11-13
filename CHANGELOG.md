@@ -7,6 +7,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `plasmacoll.fusion`: the fusion cross sections and Maxwellian reactivities of Bosch and Hale
+  (1992) for D(d,n)3He, D(d,p)T, T(d,n)4He and 3He(d,p)4He (`FUSION_REACTIONS`,
+  `FusionReaction`), and the reactivity of a fast ion in a Maxwellian target
+  (`FusionReaction.beam_reactivity`, `beam_maxwellian_reactivity`) for beam-target neutron rates.
 - `plasmacoll.units.unit_metadata`: a unit field without a default, as
   `dataclasses.field(metadata=unit_metadata("m"))`, which type checkers read as required (they
   read `unit_field("m")` as a default). `array=True` on both keeps an array an array.

@@ -75,7 +75,10 @@ formulas where it has no fit, and Vriens and Smeets' 1980 rate coefficients abov
 `plasmacoll.atomic_hydrogen`, see
 [Negative-ion sources](/plasmacoll/guides/negative-ion-sources/#hydrogen-cross-sections),
 and the H₂ parameters of Rudd's model (below), checked in the tests against the review's own
-table.
+table. The fusion cross sections and thermal reactivities of Bosch and Hale (1992) for
+D(d,n)³He, D(d,p)T, T(d,n)⁴He and ³He(d,p)⁴He are in `plasmacoll.fusion`, with the
+reactivity of a fast ion in a Maxwellian target for beam-target rates (see the Fusion
+reactions example).
 
 ## Rates from any energy distribution
 

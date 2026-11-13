@@ -29,6 +29,7 @@ export default defineDocs({
 			'plasmacoll.argon': 'Argon',
 			'plasmacoll.metals': 'Metals',
 			'plasmacoll.caesium': 'Caesium',
+			'plasmacoll.fusion': 'Fusion reactions',
 			'plasmacoll.vibrational': 'Vibrational populations',
 			'plasmacoll.population': 'Merging and splitting',
 			'plasmacoll.reactor': 'Zero-dimensional reactor',
