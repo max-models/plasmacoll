@@ -22,6 +22,7 @@ export default defineDocs({
 			'plasmacoll.boltzmann': 'Two-term Boltzmann solver',
 			'plasmacoll.charge_states': 'Charge states',
 			'plasmacoll.beam_gas': 'Beam in gas',
+			'plasmacoll.charge_exchange': 'Proton-hydrogen charge exchange',
 			'plasmacoll.janev': 'Hydrogen molecule and H⁻',
 			'plasmacoll.atomic_hydrogen': 'Hydrogen atoms',
 			'plasmacoll.hydrogen_elastic': 'Elastic e + H, H₂',
