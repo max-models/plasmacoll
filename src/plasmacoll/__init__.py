@@ -56,6 +56,10 @@ from plasmacoll.caesium import (
     caesium_ionization_cross_section,
     electron_background,
 )
+from plasmacoll.charge_exchange import (
+    proton_hydrogen_charge_exchange,
+    proton_hydrogen_charge_exchange_table,
+)
 from plasmacoll.charge_states import (
     ChargeStateTransitions,
     charge_state_fractions,
@@ -146,6 +150,8 @@ __all__ = [
     "make_rng",
     "merge_markers",
     "metal_ionization_cross_section",
+    "proton_hydrogen_charge_exchange",
+    "proton_hydrogen_charge_exchange_table",
     "proton_hydrogen_processes",
     "rate_coefficient",
     "read_lxcat",
