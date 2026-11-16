@@ -7,6 +7,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `MonteCarloCollisions.collide_species(..., untracked={})` collects the products of species
+  that are not simulated (where and with which velocity they were born), instead of raising a
+  `KeyError`: e.g. the ions made by test electrons, for an ionization map.
 - `plasmacoll.fusion`: the fusion cross sections and Maxwellian reactivities of Bosch and Hale
   (1992) for D(d,n)3He, D(d,p)T, T(d,n)4He and 3He(d,p)4He (`FUSION_REACTIONS`,
   `FusionReaction`), and the reactivity of a fast ion in a Maxwellian target
