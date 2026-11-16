@@ -5,7 +5,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-16
+
 ### Added
+- `proton_hydrogen_charge_exchange` and `proton_hydrogen_charge_exchange_table`: the H+ + H(1s)
+  charge-exchange cross section of Janev and Smith (1993).
 
 - `MonteCarloCollisions.collide_species(..., untracked={})` collects the products of species
   that are not simulated (where and with which velocity they were born), instead of raising a
