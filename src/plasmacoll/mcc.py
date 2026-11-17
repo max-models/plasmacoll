@@ -1131,6 +1131,7 @@ class MonteCarloCollisions:
         dt: float | Mapping[str, float],
         incident: Iterable[str] | None = None,
         consumed: dict[str, list[NewMarkers]] | None = None,
+        untracked: dict[str, list[NewMarkers]] | None = None,
     ) -> dict[str, MCCDiagnostics]:
         """Collide every species in ``species`` for one time step ``dt`` (s), in place.
 
@@ -1150,12 +1151,18 @@ class MonteCarloCollisions:
             consumed: If given, the neutrals the collisions consumed are
                 appended to it per background name (see
                 `MCCResult.consumed`), for a gas model that depletes.
+            untracked: If given, the products of species missing from
+                ``species`` are appended to it per product species instead of
+                raising: where and with which velocity they were born (e.g.
+                the ions of test electrons, for an ionization map), without
+                simulating them.
 
         Returns:
             The collision counters of every species that collided.
 
         Raises:
-            KeyError: If a product species is missing from ``species``.
+            KeyError: If a product species is missing from ``species`` and
+                ``untracked`` is None.
         """
         diagnostics: dict[str, MCCDiagnostics] = {}
         pending: dict[str, list[NewMarkers]] = {}
@@ -1184,7 +1191,13 @@ class MonteCarloCollisions:
 
         for product, batches in pending.items():
             if product not in species:
-                raise KeyError(f"Product species {product!r} is not simulated")
+                if untracked is None:
+                    raise KeyError(
+                        f"Product species {product!r} is not simulated; pass "
+                        "untracked={} to collect its products instead"
+                    )
+                untracked.setdefault(product, []).extend(batches)
+                continue
             species[product].add(
                 positions=xp.concatenate([batch.positions for batch in batches]),
                 velocities=xp.concatenate([batch.velocities for batch in batches]),

@@ -811,3 +811,39 @@ def test_collide_species_collects_the_consumed_neutrals_per_background() -> None
     assert sum(taken.values()) == pytest.approx(2.0 * num)
     assert taken.get("gas", 0.0) == pytest.approx(2.0 * sets["ion"].weights.size)
     assert taken.get("other", 0.0) == pytest.approx(2.0 * sets["neg"].weights.size)
+
+
+def test_collide_species_collects_untracked_products() -> None:
+    # test electrons: the ions are recorded where they were born, not simulated
+    electrons = ParticleArrays(
+        xp.full((200, 1), 0.5), beam(200, 100.0, M_E), xp.full(200, 3.0)
+    )
+    mcc = MonteCarloCollisions(
+        species_masses={"e": M_E, "He+": M_HE},
+        backgrounds=[NeutralBackground("He", 1.0e20, 0.025, M_HE)],
+        processes={
+            "e": [
+                CollisionProcess(
+                    "ionization",
+                    "He",
+                    constant(1.0e-18, threshold=24.59),
+                    products={"electron": "e", "ion": "He+"},
+                    energy_frame="lab",
+                )
+            ]
+        },
+        seed=3,
+        bound_safety=1.0,
+    )
+    with pytest.raises(KeyError, match="untracked"):
+        mcc.collide_species({"e": electrons}, dt=1.0)
+    electrons = ParticleArrays(
+        xp.full((200, 1), 0.5), beam(200, 100.0, M_E), xp.full(200, 3.0)
+    )
+    untracked: dict = {}
+    mcc.collide_species({"e": electrons}, dt=1.0, untracked=untracked)
+    assert len(electrons) == 400  # the secondary electrons are simulated
+    assert set(untracked) == {"He+"}
+    ions = xp.concatenate([batch.positions for batch in untracked["He+"]])
+    assert ions.shape == (200, 1)
+    assert bool(xp.allclose(ions, 0.5))

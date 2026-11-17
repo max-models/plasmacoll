@@ -22,6 +22,7 @@ export default defineDocs({
 			'plasmacoll.boltzmann': 'Two-term Boltzmann solver',
 			'plasmacoll.charge_states': 'Charge states',
 			'plasmacoll.beam_gas': 'Beam in gas',
+			'plasmacoll.charge_exchange': 'Proton-hydrogen charge exchange',
 			'plasmacoll.janev': 'Hydrogen molecule and H⁻',
 			'plasmacoll.atomic_hydrogen': 'Hydrogen atoms',
 			'plasmacoll.hydrogen_elastic': 'Elastic e + H, H₂',
@@ -29,6 +30,7 @@ export default defineDocs({
 			'plasmacoll.argon': 'Argon',
 			'plasmacoll.metals': 'Metals',
 			'plasmacoll.caesium': 'Caesium',
+			'plasmacoll.fusion': 'Fusion reactions',
 			'plasmacoll.vibrational': 'Vibrational populations',
 			'plasmacoll.population': 'Merging and splitting',
 			'plasmacoll.reactor': 'Zero-dimensional reactor',
@@ -48,6 +50,7 @@ export default defineDocs({
 			items: [
 				{ label: 'Installation', slug: 'getting-started/installation' },
 				{ label: 'Quickstart', slug: 'getting-started/quickstart' },
+				{ label: 'Live demo', slug: 'getting-started/live-demo' },
 			],
 		},
 		{

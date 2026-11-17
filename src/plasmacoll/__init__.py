@@ -5,7 +5,8 @@ arrays, through `cunumpy`) with prescribed Maxwellian neutral backgrounds:
 elastic and backscatter collisions, excitation, ionization, attachment,
 detachment, charge transfer, dissociation and the charge changes of fast beams, with cross sections from tables,
 LXCat files or functions (process sets for argon and sputtered metals in
-`plasmacoll.argon` and `plasmacoll.metals`, caesium in hydrogen in `plasmacoll.caesium`). It is the collision step of a particle-in-cell code,
+`plasmacoll.argon` and `plasmacoll.metals`, caesium in hydrogen in `plasmacoll.caesium`;
+the fusion cross sections and reactivities of Bosch and Hale in `plasmacoll.fusion`). It is the collision step of a particle-in-cell code,
 or with `ZeroDReactor` a homogeneous reactor (optionally in an electric
 field) for testing cross-section sets. `solve_eedf` solves the two-term
 Boltzmann equation for the same processes, for rates and transport
@@ -56,6 +57,10 @@ from plasmacoll.caesium import (
     caesium_ionization_cross_section,
     electron_background,
 )
+from plasmacoll.charge_exchange import (
+    proton_hydrogen_charge_exchange,
+    proton_hydrogen_charge_exchange_table,
+)
 from plasmacoll.charge_states import (
     ChargeStateTransitions,
     charge_state_fractions,
@@ -68,6 +73,7 @@ from plasmacoll.cross_sections import (
     find_lxcat_process,
     read_lxcat,
 )
+from plasmacoll.fusion import FUSION_REACTIONS, FusionReaction
 from plasmacoll.hydrogen import proton_hydrogen_processes
 from plasmacoll.markers import MarkerSet, ParticleArrays
 from plasmacoll.mcc import (
@@ -100,6 +106,7 @@ __version__ = "0.3.0"
 sp.register_opt_in_tag(*PROFILE_TAGS)
 
 __all__ = [
+    "FUSION_REACTIONS",
     "RUDD_H2",
     "BeamGasReaction",
     "BeamGasReactions",
@@ -110,6 +117,7 @@ __all__ = [
     "DensityProfile",
     "DynamicProfile",
     "FunctionProfile",
+    "FusionReaction",
     "LXCatProcess",
     "LotzSubshell",
     "MCCDiagnostics",
@@ -146,6 +154,8 @@ __all__ = [
     "make_rng",
     "merge_markers",
     "metal_ionization_cross_section",
+    "proton_hydrogen_charge_exchange",
+    "proton_hydrogen_charge_exchange_table",
     "proton_hydrogen_processes",
     "rate_coefficient",
     "read_lxcat",

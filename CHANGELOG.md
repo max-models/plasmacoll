@@ -5,6 +5,43 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- A live demo in the docs (Getting started, Live demo): `solve_eedf` for electrons in H2 with
+  the Park et al. and Janev fits, run in the browser with Pyodide, with sliders for E/N, the gas
+  temperature and the vibrational excitation.
+- A Pyodide workflow that checks that every module imports and the demo runs in the browser.
+
+## [0.6.0] - 2026-11-16
+
+### Added
+- `proton_hydrogen_charge_exchange` and `proton_hydrogen_charge_exchange_table`: the H+ + H(1s)
+  charge-exchange cross section of Janev and Smith (1993).
+
+- `MonteCarloCollisions.collide_species(..., untracked={})` collects the products of species
+  that are not simulated (where and with which velocity they were born), instead of raising a
+  `KeyError`: e.g. the ions made by test electrons, for an ionization map.
+- `plasmacoll.fusion`: the fusion cross sections and Maxwellian reactivities of Bosch and Hale
+  (1992) for D(d,n)3He, D(d,p)T, T(d,n)4He and 3He(d,p)4He (`FUSION_REACTIONS`,
+  `FusionReaction`), and the reactivity of a fast ion in a Maxwellian target
+  (`FusionReaction.beam_reactivity`, `beam_maxwellian_reactivity`) for beam-target neutron rates.
+- `plasmacoll.units.unit_metadata`: a unit field without a default, as
+  `dataclasses.field(metadata=unit_metadata("m"))`, which type checkers read as required (they
+  read `unit_field("m")` as a default). `array=True` on both keeps an array an array.
+- `to_array` converts mappings value by value and nested lists of quantity strings, the
+  configuration-file form of a 2D array.
+- The Townsend: `plasmacoll.units.Td` and `"80 Td"` in strings (astropy's own `Td` is a
+  tera-day, so the unit is called `townsend` there). `solve_eedf` and `swarm_table` take it.
+- `to_unit` and `to_array` take a bare unit as a scale (`u.keV`), complex values, and `to_unit`
+  CuPy arrays.
+
+### Changed
+
+- The figures of the docs are interactive Plotly figures in the site's colours, drawn with
+  plasma-plots (now in the `docs` extra), one figure per
+  plot and with their formulas typeset as LaTeX.
+- `convert_units` skips fields that are already floats and caches each class's unit fields:
+  building a `NeutralBackground` of plain numbers takes 2.6 times less time.
+
 ## [0.5.0] - 2026-11-03
 
 ### Added

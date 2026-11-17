@@ -1,0 +1,66 @@
+---
+title: Live demo
+description: The energy distribution of electrons in hydrogen, solved in your browser.
+---
+
+import PyodideDemo from '@max-models/starlight-theme/components/PyodideDemo.astro';
+import code from '../../../components/plasmacoll_demo.py?raw';
+
+This page runs plasmacoll in your browser with [Pyodide](https://pyodide.org) (Python compiled
+to WebAssembly): nothing is installed and nothing is sent to a server. Each slider solves the
+two-term Boltzmann equation for electrons in molecular hydrogen again.
+
+<PyodideDemo
+	code={code}
+	controls={[
+		{ name: 'reduced_field', label: 'Reduced field E/N', min: -1, max: 2.5, value: 30, log: true, unit: 'Td' },
+		{ name: 'gas_temperature', label: 'Gas temperature', min: 77, max: 1000, step: 1, value: 300, unit: 'K' },
+		{ name: 'vibrational', label: 'Vibrational excitation', options: ['on', 'off'], value: 'on' },
+	]}
+	caption="Electron energy probability function in H₂ from solve_eedf (solid) and the Maxwellian with the same mean energy (dashed)."
+/>
+
+The cross sections are the published fits that come with the package: the elastic momentum
+transfer of Park et al. (2022) and the vibrational and electronic excitation and the ionization
+of Janev, Reiter and Samm (2003). On this plot a Maxwellian is a straight line.
+
+- At a fraction of a townsend the electrons gain little energy between collisions and stay
+  close to the gas temperature: the distribution is nearly a Maxwellian.
+- From a few to some tens of townsends the vibrational excitation (thresholds 0.5 and 1 eV)
+  takes most of the power the field gives the electrons. It cuts the distribution off above a
+  few eV, orders of magnitude below the Maxwellian. Switch it off and the mean energy rises
+  two- to threefold.
+- Around 100 Td the electronic excitations (above 8 eV) and the ionization deplete the tail
+  above about 20 eV.
+
+The same in a script:
+
+```python
+import plasmacoll
+from plasmacoll.constants import ATOMIC_MASS, kelvin_to_ev
+from plasmacoll.hydrogen_elastic import ELASTIC_FITS
+from plasmacoll.janev import JANEV_FITS
+
+h2 = plasmacoll.NeutralBackground("H2", 1e22, kelvin_to_ev(300.0), 2.016 * ATOMIC_MASS)
+processes = [
+    plasmacoll.CollisionProcess("elastic", "H2", ELASTIC_FITS["H2"].cross_section()),
+    *(
+        plasmacoll.CollisionProcess(
+            "excitation", "H2", JANEV_FITS[key].cross_section(), name=key
+        )
+        for key in ("e_h2_vibrational_1", "e_h2_vibrational_2", "e_h2_triplet_b")
+    ),
+    plasmacoll.CollisionProcess(
+        "ionization",
+        "H2",
+        JANEV_FITS["e_h2_ionization"].cross_section(),
+        name="ionization",
+        products={"electron": "e", "ion": "H2+"},
+    ),
+]
+solution = plasmacoll.solve_eedf(processes, [h2], 30.0)  # E/N in Td
+print(solution.mean_energy, solution.rate_coefficients["ionization"])
+```
+
+See the [two-term Boltzmann example](/plasmacoll/examples/07-two-term-boltzmann/) for the
+method and its checks.
