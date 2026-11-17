@@ -1,0 +1,19 @@
+name: Pyodide
+
+# Checks that plasmacoll runs in the browser: its wheel and those of its dependencies installed
+# in Pyodide under Node, every module imported (without mpi4py or CuPy) and the live demo of the
+# docs (docs/src/components/plasmacoll_demo.py) run, with the reusable workflow of
+# max-models/starlight-theme.
+
+on:
+  push:
+    branches: ["main", "devel"]
+  pull_request:
+    branches: ["main", "devel"]
+
+permissions:
+  contents: read
+
+jobs:
+  pyodide:
+    uses: max-models/starlight-theme/.github/workflows/pyodide.yml@v0

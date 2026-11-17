@@ -5,6 +5,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- A live demo in the docs (Getting started, Live demo): `solve_eedf` for electrons in H2 with
+  the Park et al. and Janev fits, run in the browser with Pyodide, with sliders for E/N, the gas
+  temperature and the vibrational excitation.
+- A Pyodide workflow that checks that every module imports and the demo runs in the browser.
+
 ## [0.6.0] - 2026-11-16
 
 ### Added
