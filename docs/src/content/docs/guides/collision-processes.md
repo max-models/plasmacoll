@@ -194,6 +194,8 @@ The gas along the beam is a `NeutralBackground` with a `DensityProfile` along th
 
 ## Out of scope
 
-The targets are always neutral gases. Collisions between charged particles (Coulomb collisions
-such as electron–electron or electron–ion, recombination, mutual neutralization) need a
-different operator (e.g. Takizuka–Abe or Nanbu) and are not part of plasmacoll.
+The targets of the Monte Carlo collisions are always neutral gases. Binary Coulomb
+collisions between charged species (electron–electron, electron–ion, ion–ion) are a
+separate operator, `plasmacoll.coulomb` (Takizuka–Abe pairing with Nanbu or Takizuka–Abe
+scattering; see the Coulomb collisions example). Recombination and mutual neutralization
+are not part of plasmacoll.

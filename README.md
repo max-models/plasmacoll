@@ -45,15 +45,20 @@ optionally in an electric field, for testing cross-section sets.
   method of BOLSIG+) for the same processes: the energy distribution,
   mobility, diffusion and rate coefficients. `swarm_table` tabulates
   them against the mean energy for fluid and global models.
+- **Coulomb collisions:** `collide_intra` and `collide_inter` collide
+  the markers of plasma species with each other in every cell
+  (Takizuka-Abe pairing, Nanbu or Takizuka-Abe scattering, unequal
+  weights after Pérez et al., the NRL Coulomb logarithm per cell), with
+  compiled Pyccel and CUDA kernels.
 - **Validated:** a 0D reactor reproduces the closed-form relaxation,
   growth and decay rates of Maxwell-molecule gases, and the drift
   velocity and Wannier energy of a swarm in a field. The Boltzmann
   solver reproduces the Maxwell and Druyvesteyn limits and published
-  model-gas results. The tests run on NumPy and on a CuPy stand-in, with
-  100 % combined coverage.
+  model-gas results, and the Coulomb collisions the NRL relaxation,
+  isotropisation and slowing-down rates. The tests run on NumPy and on a
+  CuPy stand-in, with 100 % combined coverage.
 
-Collisions between charged particles (Coulomb collisions, recombination)
-are out of scope: the collision partners are always neutral gases.
+Recombination and mutual neutralization are out of scope.
 
 Documentation: <https://max-models.github.io/plasmacoll/>
 
