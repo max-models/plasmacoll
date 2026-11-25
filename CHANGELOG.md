@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `plasmacoll.surfaces`: yields of particles that hit a surface, against the incident energy
+  and angle, for secondary emission, reflection and conversion at walls: `ConstantYield`,
+  `TabulatedYield`, `VaughanYield` (Vaughan's secondary-electron yield with its angular
+  dependence) and `surface_yield`, which reads them from a configuration-file entry.
 - `plasmacoll.coulomb`: binary Coulomb collisions between the markers of plasma species, per
   cell (`collide_intra`, `collide_inter` on `CellMarkers` sorted by cell): Takizuka-Abe
   pairing with a triplet for odd counts, Nanbu or Takizuka-Abe scattering, unequal weights
