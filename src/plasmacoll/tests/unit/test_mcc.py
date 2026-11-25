@@ -422,6 +422,7 @@ def test_batched_processes_attribute_the_correct_background(monkeypatch) -> None
             ],
         },
         seed=7,
+        use_kernel=False,  # the kernel samples the neutrals itself
     )
     num = 4000
     initial = beam(num, 50.0, M_HE)
@@ -438,6 +439,121 @@ def test_batched_processes_attribute_the_correct_background(monkeypatch) -> None
     assert int(xp.count_nonzero(on_a)) == counts["on_A"]
     assert int(xp.count_nonzero(on_b)) == counts["on_B"]
     assert bool(xp.all(on_a | on_b | ~collided))
+
+
+def test_kernel_attributes_the_correct_background() -> None:
+    """The compiled step draws each process's neutral from its own background.
+
+    Cold backgrounds drifting in opposite directions: a ``backscatter`` with an
+    equal mass leaves the marker with the velocity of the neutral it hit.
+    """
+    mcc = MonteCarloCollisions(
+        species_masses={"ion": M_HE},
+        backgrounds=[
+            NeutralBackground("A", 1.0e20, 0.0, M_HE, drift=(100.0, 100.0, 100.0)),
+            NeutralBackground("B", 1.0e20, 0.0, M_HE, drift=(-100.0, -100.0, -100.0)),
+        ],
+        processes={
+            "ion": [
+                CollisionProcess("backscatter", "A", constant(1.0e-18), name="on_A"),
+                CollisionProcess("backscatter", "B", constant(1.0e-18), name="on_B"),
+            ],
+        },
+        seed=7,
+    )
+    assert mcc.kernel_plan("ion") is not None
+    num = 4000
+    initial = beam(num, 50.0, M_HE)
+    result = mcc.collide("ion", _origin(num), initial, _ones(num), dt=1.0)
+
+    counts = result.diagnostics.counts
+    assert result.diagnostics.bound_violations == 0
+    assert counts["on_A"] > 0
+    assert counts["on_B"] > 0
+    on_a = xp.all(xp.isclose(result.velocities, 100.0), axis=1)
+    on_b = xp.all(xp.isclose(result.velocities, -100.0), axis=1)
+    assert int(xp.count_nonzero(on_a)) == counts["on_A"]
+    assert int(xp.count_nonzero(on_b)) == counts["on_B"]
+
+
+@pytest.mark.parametrize("species", ["e", "ion"])
+def test_kernel_matches_the_array_operations(species: str) -> None:
+    """The compiled step and the array operations agree in distribution.
+
+    Helium-like processes (elastic, two excitations, ionization for the
+    electrons; isotropic and backscatter for the ions): the counts per process,
+    the products and the energy change of many steps agree within their noise,
+    and the reported energy change is the change of the stored markers.
+    """
+    elastic = CrossSection([0.0, 10.0, 100.0], [6.0e-20, 4.0e-20, 1.0e-20])
+    processes = {
+        "e": [
+            CollisionProcess("elastic", "He", elastic, name="elastic"),
+            CollisionProcess(
+                "excitation", "He", CrossSection([20.0, 100.0], [1.0e-21, 2.0e-21], 20.0),
+                energy_loss=20.0, name="excitation",
+            ),
+            CollisionProcess(
+                "ionization", "He", CrossSection([24.6, 100.0], [0.0, 3.0e-21], 24.6),
+                energy_loss=24.6, products={"electron": "e", "ion": "ion"},
+                energy_sharing="uniform", scattering="vahedi_surendra", name="ionization",
+            ),
+        ],
+        "ion": [
+            CollisionProcess("elastic", "He", elastic, name="isotropic"),
+            CollisionProcess("backscatter", "He", elastic, name="backscatter"),
+        ],
+    }  # fmt: skip
+    masses = {"e": M_E, "ion": M_HE}
+    temperature = {"e": 20.0, "ion": 0.5}[species]
+    totals = {}
+    for use_kernel in (False, True):
+        mcc = MonteCarloCollisions(
+            species_masses=masses,
+            backgrounds=[NeutralBackground("He", 1.0e21, 0.025, M_HE)],
+            processes={species: processes[species]},
+            seed=3,
+            use_kernel=use_kernel,
+        )
+        assert (mcc.kernel_plan(species) is not None) is True
+        rng = np.random.default_rng(0)
+        num = 4000
+        counts: dict[str, int] = {}
+        energy = 0.0
+        products = 0
+        for _ in range(40):
+            velocities = xp.asarray(
+                rng.standard_normal((num, 3))
+                * math.sqrt(temperature * ELEMENTARY_CHARGE / masses[species])
+            )
+            weights = xp.ones(num)
+            before = 0.5 * masses[species] * float(xp.sum(velocities**2))
+            result = mcc.collide(species, _origin(num), velocities, weights, dt=2.0e-10)
+            after = 0.5 * masses[species] * float(xp.sum(result.velocities**2))
+            made = sum(
+                0.5 * masses[name] * float(xp.sum(batch.velocities**2))
+                for name, batches in result.created.items()
+                for batch in batches
+            )
+            assert result.diagnostics.energy_change == pytest.approx(
+                after - before + made, rel=1e-9, abs=1e-30
+            )
+            for name, count in result.diagnostics.counts.items():
+                counts[name] = counts.get(name, 0) + count
+            energy += result.diagnostics.energy_change
+            products += sum(
+                int(batch.weights.shape[0])
+                for batches in result.created.values()
+                for batch in batches
+            )
+        totals[use_kernel] = (counts, energy, products)
+    for name, count in totals[False][0].items():
+        other = totals[True][0][name]
+        assert abs(count - other) <= 5.0 * math.sqrt(count + other) + 5, name
+    if species == "e":
+        assert totals[True][2] == totals[True][0]["ionization"] * 2
+    energy_python, energy_kernel = totals[False][1], totals[True][1]
+    assert energy_kernel == pytest.approx(energy_python, rel=0.15)
 
 
 # --------------------------------------------------------------------- #

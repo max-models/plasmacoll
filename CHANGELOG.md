@@ -29,6 +29,17 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the Park et al. and Janev fits, run in the browser with Pyodide, with sliders for E/N, the gas
   temperature and the vibrational excitation.
 - A Pyodide workflow that checks that every module imports and the demo runs in the browser.
+- A compiled Monte Carlo collision step (`plasmacoll.kernels.mcc_collide`, Pyccel and NumPy)
+  for backgrounds without profiles, tabulated cross sections and the kinds `elastic`,
+  `excitation`, `backscatter` and self ionization: `MonteCarloCollisions.collide` takes it where
+  `kernel_plan` applies (`use_kernel`, `PLASMACOLL_MCC_KERNEL=0` to turn it off). About 6x
+  faster per call on picnic's Turner CCP.
+- `MCCDiagnostics.energy_change`: the kinetic energy the collisions added, for energy budgets.
+
+### Changed
+- The candidates of the null-collision step are drawn by their geometric gaps (the same
+  independent draw per marker), the largest speed with a compiled kernel, and the bound at the
+  fastest speed interpolated from its table: the random stream differs from 0.6.
 
 ## [0.6.0] - 2026-11-16
 
