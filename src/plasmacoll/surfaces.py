@@ -45,16 +45,23 @@ class SurfaceYield(Protocol):
 
     def to_dict(self) -> dict:
         """Return the configuration-file form (`surface_yield` reads it)."""
+        ...
 
-    def __call__(self, energy: Array | float, cos_incidence: Array | float = 1.0):
+    def __call__(
+        self, energy: Array | float, cos_incidence: Array | float = 1.0
+    ) -> np.ndarray:
         """Return the yield at ``energy`` (eV) and the incidence cosines."""
+        ...
 
 
-def _energies(energy: Array | float, cos_incidence: Array | float) -> tuple:
+def _energies(
+    energy: Array | float, cos_incidence: Array | float
+) -> tuple[np.ndarray, np.ndarray]:
     """Return the energies and cosines as float arrays of one shape."""
     energy = np.asarray(energy, dtype=float)
     cosine = np.asarray(cos_incidence, dtype=float)
-    return np.broadcast_arrays(energy, cosine)
+    energy, cosine = np.broadcast_arrays(energy, cosine)
+    return energy, cosine
 
 
 @dataclass(frozen=True)
@@ -127,7 +134,7 @@ class TabulatedYield:
     ) -> np.ndarray:
         """Return the interpolated yield at ``energy`` (eV)."""
         energy, _ = _energies(energy, cos_incidence)
-        return np.interp(energy, self.energy, self.values)
+        return np.asarray(np.interp(energy, self.energy, self.values))
 
 
 def _vaughan_rules() -> dict:
