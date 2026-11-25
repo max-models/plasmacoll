@@ -21,9 +21,12 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
-  "cunumpy>=0.5",
+  "cunumpy>=0.7.2",
   "methodcard",
   "numpy",
+  # the CPU kernels of the Coulomb collisions: compiled on first use; not in the browser
+  # (Pyodide), which has no compiler: the kernels run their NumPy versions there
+  "pyccel>2.0; sys_platform!='emscripten'",
   "scope-profiler>=0.7.5",
 ]
 
@@ -57,6 +60,7 @@ where = [ "src" ]
 
 [tool.setuptools.package-data]
 "*" = [ "py.typed" ]
+plasmacoll = [ "kernels/*.cuh", "kernels/*/*.cu" ]
 
 [tool.ruff]
 target-version = "py310"
@@ -73,12 +77,14 @@ ignore = [ "E501" ] # line length is handled by the formatter
 pydocstyle.convention = "google"
 per-file-ignores."**/tests/**" = [ "D" ]
 per-file-ignores."*.ipynb" = [ "D" ]
+# the Pyccel kernels: type annotations Pyccel reads, plain helper functions
+per-file-ignores."src/plasmacoll/kernels/*/*_pyccel.py" = [ "D", "F722", "F821", "UP" ]
 
 [tool.pyright]
 include = [ "src" ]
 venvPath = "."
 venv = ".venv"
-exclude = [ "**/tests" ]
+exclude = [ "**/tests", "src/plasmacoll/kernels/*/*_pyccel.py" ]
 pythonVersion = "3.10"
 typeCheckingMode = "standard"
 
@@ -93,7 +99,8 @@ filterwarnings = [ "ignore:.*collision probability per step:RuntimeWarning" ]
 
 [tool.coverage.run]
 source = [ "plasmacoll" ]
-omit = [ "*/tests/*" ]
+# the Pyccel kernels run compiled (the tests compare them with their NumPy versions)
+omit = [ "*/kernels/*/*_pyccel.py", "*/tests/*" ]
 
 [tool.coverage.report]
 show_missing = true
@@ -104,6 +111,8 @@ python-version = "3.10"
 
 [tool.ty.src]
 include = [ "src" ]
+# the Pyccel kernels: Pyccel's array annotations, e.g. float[:]
+exclude = [ "src/plasmacoll/kernels/*/*_pyccel.py" ]
 
 [tool.ty.analysis]
 # CuPy is optional and not installed in CI

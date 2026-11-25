@@ -6,6 +6,21 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `plasmacoll.coulomb`: binary Coulomb collisions between the markers of plasma species, per
+  cell (`collide_intra`, `collide_inter` on `CellMarkers` sorted by cell): Takizuka-Abe
+  pairing with a triplet for odd counts, Nanbu or Takizuka-Abe scattering, unequal weights
+  after Pérez et al. (2012), a fixed or per-cell NRL Coulomb logarithm (`coulomb_logarithm`),
+  `relaxation_rate`, and a `reduce` hook for cells shared by MPI ranks. Moved from picnic,
+  with compiled kernels (`plasmacoll.kernels`: Pyccel, NumPy and CUDA versions; Pyccel is
+  now a dependency) and the example "Coulomb collisions".
+- `plasmacoll.catalogue`: representative cross sections of low-temperature plasma processes
+  for quick estimates, each also as a `CrossSection`; moved from picnic.
+- `plasmacoll.fake_data`: fabricated H2(v) dissociative-attachment cross sections that always
+  warn (`FakeCrossSectionDataWarning`), for testing the vibrational-mixture pipeline; moved
+  from picnic.
+- `plasmacoll.testing`: fake LXCat files for tests (`lxcat_block`, `fake_argon_set`); moved
+  from picnic.
+- `plasmacoll.constants.VACUUM_PERMITTIVITY`.
 - A live demo in the docs (Getting started, Live demo): `solve_eedf` for electrons in H2 with
   the Park et al. and Janev fits, run in the browser with Pyodide, with sliders for E/N, the gas
   temperature and the vibrational excitation.

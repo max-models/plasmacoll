@@ -6,7 +6,7 @@ elastic and backscatter collisions, excitation, ionization, attachment,
 detachment, charge transfer, dissociation and the charge changes of fast beams, with cross sections from tables,
 LXCat files or functions (process sets for argon and sputtered metals in
 `plasmacoll.argon` and `plasmacoll.metals`, caesium in hydrogen in `plasmacoll.caesium`;
-the fusion cross sections and reactivities of Bosch and Hale in `plasmacoll.fusion`). It is the collision step of a particle-in-cell code,
+the fusion cross sections and reactivities of Bosch and Hale in `plasmacoll.fusion`), and the binary Coulomb collisions between plasma species in `plasmacoll.coulomb`. It is the collision step of a particle-in-cell code,
 or with `ZeroDReactor` a homogeneous reactor (optionally in an electric
 field) for testing cross-section sets. `solve_eedf` solves the two-term
 Boltzmann equation for the same processes, for rates and transport
@@ -66,6 +66,13 @@ from plasmacoll.charge_states import (
     charge_state_fractions,
     stripping_processes,
 )
+from plasmacoll.coulomb import (
+    CellMarkers,
+    collide_inter,
+    collide_intra,
+    coulomb_logarithm,
+    relaxation_rate,
+)
 from plasmacoll.cross_sections import (
     CrossSection,
     LXCatProcess,
@@ -111,6 +118,7 @@ __all__ = [
     "BeamGasReaction",
     "BeamGasReactions",
     "BoltzmannSolution",
+    "CellMarkers",
     "ChargeStateTransitions",
     "CollisionProcess",
     "CrossSection",
@@ -142,6 +150,10 @@ __all__ = [
     "boltzmann_level_populations",
     "caesium_collisions",
     "caesium_ionization_cross_section",
+    "charge_state_fractions",
+    "collide_inter",
+    "collide_intra",
+    "coulomb_logarithm",
     "eedf_rate_coefficient",
     "elastic_from_lxcat",
     "electron_background",
@@ -150,7 +162,6 @@ __all__ = [
     "hydrogen_atom_processes",
     "hydrogen_beam_on_h2",
     "lotz_cross_section",
-    "charge_state_fractions",
     "make_rng",
     "merge_markers",
     "metal_ionization_cross_section",
@@ -159,6 +170,7 @@ __all__ = [
     "proton_hydrogen_processes",
     "rate_coefficient",
     "read_lxcat",
+    "relaxation_rate",
     "scattering_cosine",
     "solve_eedf",
     "split_markers",
