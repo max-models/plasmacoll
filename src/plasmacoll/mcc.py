@@ -1149,13 +1149,16 @@ class MonteCarloCollisions:
         diagnostics.energy_change = float(energy[0])
         if num_products == 0:
             return
+        ion_species, background = plan.ion_species, plan.ionization_background
+        if ion_species is None or background is None:  # only ionization makes products
+            raise RuntimeError("products without an ionization process")
         parents = parents[:num_products]
         product_positions = np.array(positions[parents], copy=True)
         product_weights = np.array(weights[parents], copy=True)
         ion_velocities = np.ascontiguousarray(ions[:, :num_products].T)
         batches = {
             species: np.ascontiguousarray(electrons[:, :num_products].T),
-            plan.ion_species: ion_velocities,
+            ion_species: ion_velocities,
         }
         for product, product_velocities in batches.items():
             created.setdefault(product, []).append(
@@ -1173,7 +1176,7 @@ class MonteCarloCollisions:
                 self._masses[product], product_weights, product_velocities
             )
         # each ionization consumed one neutral of its background
-        consumed.setdefault(plan.ionization_background, []).append(
+        consumed.setdefault(background, []).append(
             NewMarkers(
                 np.array(product_positions, copy=True),
                 np.array(ion_velocities, copy=True),
