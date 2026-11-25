@@ -101,6 +101,13 @@ from plasmacoll.process import CollisionProcess
 from plasmacoll.rates import RateTable, eedf_rate_coefficient, rate_coefficient
 from plasmacoll.reactor import ReactorHistory, ReactorState, ZeroDReactor
 from plasmacoll.secondaries import RUDD_H2, RuddIonization, RuddShell
+from plasmacoll.surfaces import (
+    ConstantYield,
+    SurfaceYield,
+    TabulatedYield,
+    VaughanYield,
+    surface_yield,
+)
 from plasmacoll.vibrational import (
     VibrationalDistribution,
     boltzmann_level_populations,
@@ -121,6 +128,7 @@ __all__ = [
     "CellMarkers",
     "ChargeStateTransitions",
     "CollisionProcess",
+    "ConstantYield",
     "CrossSection",
     "DensityProfile",
     "DynamicProfile",
@@ -141,7 +149,10 @@ __all__ = [
     "ReactorState",
     "RuddIonization",
     "RuddShell",
+    "SurfaceYield",
     "SwarmTable",
+    "TabulatedYield",
+    "VaughanYield",
     "VibrationalDistribution",
     "ZeroDReactor",
     "argon_electron_processes",
@@ -175,5 +186,6 @@ __all__ = [
     "solve_eedf",
     "split_markers",
     "stripping_processes",
+    "surface_yield",
     "swarm_table",
 ]

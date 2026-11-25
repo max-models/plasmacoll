@@ -27,6 +27,7 @@ export default defineDocs({
 			'plasmacoll.atomic_hydrogen': 'Hydrogen atoms',
 			'plasmacoll.hydrogen_elastic': 'Elastic e + H, H₂',
 			'plasmacoll.secondaries': 'Secondary electrons',
+			'plasmacoll.surfaces': 'Surface yields',
 			'plasmacoll.argon': 'Argon',
 			'plasmacoll.metals': 'Metals',
 			'plasmacoll.caesium': 'Caesium',
