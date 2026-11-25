@@ -18,7 +18,7 @@ REACTOR_REGIONS = {
     "plasmacoll.reactor_step",
     "plasmacoll.collide_species",
     "plasmacoll.collide",
-    "plasmacoll.collide_process",
+    "plasmacoll.collide_kernel",  # the compiled step of the common case
 }
 
 
@@ -52,6 +52,8 @@ def test_regions_are_off_by_default() -> None:
 @pytest.mark.parametrize("tags", [["plasmacoll"], ["*"]])
 def test_enabling_the_tag_records_the_regions(tags: list[str]) -> None:
     names = _region_names_of_a_reactor_run(enable_tags=tags)
+    # "*" also turns on cunumpy's regions (the compiled kernel's own)
+    names = {name for name in names if not name.startswith("cunumpy.")}
     assert names == REACTOR_REGIONS | {"user.run"}
 
 
