@@ -29,7 +29,7 @@ H, H- + H2 -> H2+ + e  Rudd's proton cross section at the same speed       place
 =====================  ==================================================  ===============
 
 The placeholders' ratios are those of the round 1 MeV D- numbers of
-wellbalanced's illustrative neutralizer (freeofcharge's ``GAS_NEUTRALIZER``);
+carafe's illustrative neutralizer (freeofcharge's ``GAS_NEUTRALIZER``);
 they give the right order of magnitude, not data, and every reaction says
 whether it is one (`BeamGasReaction.placeholder`). The capture fit is
 fitted to about 200 keV; above, its power-law tail is kept, an extrapolation.
@@ -68,7 +68,7 @@ __all__ = [
 
 #: Placeholder cross sections as fractions of H- -> H on H2: double stripping
 #: and the stripping of the neutrals (the ratios of 5.0e-22 and 3.7e-21 to
-#: 1.2e-20 m^2, wellbalanced's illustrative 1 MeV D- values).
+#: 1.2e-20 m^2, carafe's illustrative 1 MeV D- values).
 PLACEHOLDER_RATIOS = {("-", "+"): 5.0e-22 / 1.2e-20, ("0", "+"): 3.7e-21 / 1.2e-20}
 #: Width ``w`` in eV of the ejected electrons' energy distribution in H2: the
 #: binding energy (15.43 eV), the scale of Rudd's spectrum.
