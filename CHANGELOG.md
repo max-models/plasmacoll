@@ -37,6 +37,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `MCCDiagnostics.energy_change`: the kinetic energy the collisions added, for energy budgets.
 
 ### Changed
+- The `max_squared_speed` kernel (the bound of the Monte Carlo collisions, taken every step)
+  splits the markers over the OpenMP threads and has no branch in its loop: 8x faster for
+  300 000 markers on 4 threads.
 - The candidates of the null-collision step are drawn by their geometric gaps (the same
   independent draw per marker), the largest speed with a compiled kernel, and the bound at the
   fastest speed interpolated from its table: the random stream differs from 0.6.
