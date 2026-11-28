@@ -92,9 +92,12 @@ def test_compiled_mcc_kernel_matches_numpy(scattering: str, sharing: str) -> Non
     assert counts[-1] == 0  # no bound violation under the operator's bound
 
 
-def test_max_squared_speed_kernel_matches_numpy() -> None:
+@pytest.mark.parametrize("count", [1, 1001, 50001])
+def test_max_squared_speed_kernel_matches_numpy(count) -> None:
+    """Serial and (above 20 000 markers) split over the threads: the same maximum."""
     rng = np.random.default_rng(2)
-    rows = rng.standard_normal((3, 1001))
+    rows = rng.standard_normal((3, count))
+    rows[:, count // 3] *= 10.0  # the fastest marker inside a chunk, not at its end
     values = []
     for implementation in ("pyccel", "numpy"):
         with xp.kernels.use_host_kernel_implementation(implementation):
