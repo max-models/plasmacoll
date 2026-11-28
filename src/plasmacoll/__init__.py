@@ -5,7 +5,8 @@ arrays, through `cunumpy`) with prescribed Maxwellian neutral backgrounds:
 elastic and backscatter collisions, excitation, ionization, attachment,
 detachment, charge transfer, dissociation and the charge changes of fast beams, with cross sections from tables,
 LXCat files or functions (process sets for argon and sputtered metals in
-`plasmacoll.argon` and `plasmacoll.metals`, caesium in hydrogen in `plasmacoll.caesium`). It is the collision step of a particle-in-cell code,
+`plasmacoll.argon` and `plasmacoll.metals`, caesium in hydrogen in `plasmacoll.caesium`;
+the fusion cross sections and reactivities of Bosch and Hale in `plasmacoll.fusion`), and the binary Coulomb collisions between plasma species in `plasmacoll.coulomb`. It is the collision step of a particle-in-cell code,
 or with `ZeroDReactor` a homogeneous reactor (optionally in an electric
 field) for testing cross-section sets. `solve_eedf` solves the two-term
 Boltzmann equation for the same processes, for rates and transport
@@ -56,10 +57,21 @@ from plasmacoll.caesium import (
     caesium_ionization_cross_section,
     electron_background,
 )
+from plasmacoll.charge_exchange import (
+    proton_hydrogen_charge_exchange,
+    proton_hydrogen_charge_exchange_table,
+)
 from plasmacoll.charge_states import (
     ChargeStateTransitions,
     charge_state_fractions,
     stripping_processes,
+)
+from plasmacoll.coulomb import (
+    CellMarkers,
+    collide_inter,
+    collide_intra,
+    coulomb_logarithm,
+    relaxation_rate,
 )
 from plasmacoll.cross_sections import (
     CrossSection,
@@ -68,6 +80,7 @@ from plasmacoll.cross_sections import (
     find_lxcat_process,
     read_lxcat,
 )
+from plasmacoll.fusion import FUSION_REACTIONS, FusionReaction
 from plasmacoll.hydrogen import proton_hydrogen_processes
 from plasmacoll.markers import MarkerSet, ParticleArrays
 from plasmacoll.mcc import (
@@ -88,6 +101,13 @@ from plasmacoll.process import CollisionProcess
 from plasmacoll.rates import RateTable, eedf_rate_coefficient, rate_coefficient
 from plasmacoll.reactor import ReactorHistory, ReactorState, ZeroDReactor
 from plasmacoll.secondaries import RUDD_H2, RuddIonization, RuddShell
+from plasmacoll.surfaces import (
+    ConstantYield,
+    SurfaceYield,
+    TabulatedYield,
+    VaughanYield,
+    surface_yield,
+)
 from plasmacoll.vibrational import (
     VibrationalDistribution,
     boltzmann_level_populations,
@@ -100,16 +120,20 @@ __version__ = "0.3.0"
 sp.register_opt_in_tag(*PROFILE_TAGS)
 
 __all__ = [
+    "FUSION_REACTIONS",
     "RUDD_H2",
     "BeamGasReaction",
     "BeamGasReactions",
     "BoltzmannSolution",
+    "CellMarkers",
     "ChargeStateTransitions",
     "CollisionProcess",
+    "ConstantYield",
     "CrossSection",
     "DensityProfile",
     "DynamicProfile",
     "FunctionProfile",
+    "FusionReaction",
     "LXCatProcess",
     "LotzSubshell",
     "MCCDiagnostics",
@@ -125,7 +149,10 @@ __all__ = [
     "ReactorState",
     "RuddIonization",
     "RuddShell",
+    "SurfaceYield",
     "SwarmTable",
+    "TabulatedYield",
+    "VaughanYield",
     "VibrationalDistribution",
     "ZeroDReactor",
     "argon_electron_processes",
@@ -134,6 +161,10 @@ __all__ = [
     "boltzmann_level_populations",
     "caesium_collisions",
     "caesium_ionization_cross_section",
+    "charge_state_fractions",
+    "collide_inter",
+    "collide_intra",
+    "coulomb_logarithm",
     "eedf_rate_coefficient",
     "elastic_from_lxcat",
     "electron_background",
@@ -142,16 +173,19 @@ __all__ = [
     "hydrogen_atom_processes",
     "hydrogen_beam_on_h2",
     "lotz_cross_section",
-    "charge_state_fractions",
     "make_rng",
     "merge_markers",
     "metal_ionization_cross_section",
+    "proton_hydrogen_charge_exchange",
+    "proton_hydrogen_charge_exchange_table",
     "proton_hydrogen_processes",
     "rate_coefficient",
     "read_lxcat",
+    "relaxation_rate",
     "scattering_cosine",
     "solve_eedf",
     "split_markers",
     "stripping_processes",
+    "surface_yield",
     "swarm_table",
 ]

@@ -5,6 +5,76 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `plasmacoll.surfaces`: yields of particles that hit a surface, against the incident energy
+  and angle, for secondary emission, reflection and conversion at walls: `ConstantYield`,
+  `TabulatedYield`, `VaughanYield` (Vaughan's secondary-electron yield with its angular
+  dependence) and `surface_yield`, which reads them from a configuration-file entry.
+- `plasmacoll.coulomb`: binary Coulomb collisions between the markers of plasma species, per
+  cell (`collide_intra`, `collide_inter` on `CellMarkers` sorted by cell): Takizuka-Abe
+  pairing with a triplet for odd counts, Nanbu or Takizuka-Abe scattering, unequal weights
+  after Pérez et al. (2012), a fixed or per-cell NRL Coulomb logarithm (`coulomb_logarithm`),
+  `relaxation_rate`, and a `reduce` hook for cells shared by MPI ranks. Moved from picnic,
+  with compiled kernels (`plasmacoll.kernels`: Pyccel, NumPy and CUDA versions; Pyccel is
+  now a dependency) and the example "Coulomb collisions".
+- `plasmacoll.catalogue`: representative cross sections of low-temperature plasma processes
+  for quick estimates, each also as a `CrossSection`; moved from picnic.
+- `plasmacoll.fake_data`: fabricated H2(v) dissociative-attachment cross sections that always
+  warn (`FakeCrossSectionDataWarning`), for testing the vibrational-mixture pipeline; moved
+  from picnic.
+- `plasmacoll.testing`: fake LXCat files for tests (`lxcat_block`, `fake_argon_set`); moved
+  from picnic.
+- `plasmacoll.constants.VACUUM_PERMITTIVITY`.
+- A live demo in the docs (Getting started, Live demo): `solve_eedf` for electrons in H2 with
+  the Park et al. and Janev fits, run in the browser with Pyodide, with sliders for E/N, the gas
+  temperature and the vibrational excitation.
+- A Pyodide workflow that checks that every module imports and the demo runs in the browser.
+- A compiled Monte Carlo collision step (`plasmacoll.kernels.mcc_collide`, Pyccel and NumPy)
+  for backgrounds without profiles, tabulated cross sections and the kinds `elastic`,
+  `excitation`, `backscatter` and self ionization: `MonteCarloCollisions.collide` takes it where
+  `kernel_plan` applies (`use_kernel`, `PLASMACOLL_MCC_KERNEL=0` to turn it off). About 6x
+  faster per call on picnic's Turner CCP.
+- `MCCDiagnostics.energy_change`: the kinetic energy the collisions added, for energy budgets.
+
+### Changed
+- The `max_squared_speed` kernel (the bound of the Monte Carlo collisions, taken every step)
+  splits the markers over the OpenMP threads and has no branch in its loop: 8x faster for
+  300 000 markers on 4 threads.
+- The candidates of the null-collision step are drawn by their geometric gaps (the same
+  independent draw per marker), the largest speed with a compiled kernel, and the bound at the
+  fastest speed interpolated from its table: the random stream differs from 0.6.
+
+## [0.6.0] - 2026-11-16
+
+### Added
+- `proton_hydrogen_charge_exchange` and `proton_hydrogen_charge_exchange_table`: the H+ + H(1s)
+  charge-exchange cross section of Janev and Smith (1993).
+
+- `MonteCarloCollisions.collide_species(..., untracked={})` collects the products of species
+  that are not simulated (where and with which velocity they were born), instead of raising a
+  `KeyError`: e.g. the ions made by test electrons, for an ionization map.
+- `plasmacoll.fusion`: the fusion cross sections and Maxwellian reactivities of Bosch and Hale
+  (1992) for D(d,n)3He, D(d,p)T, T(d,n)4He and 3He(d,p)4He (`FUSION_REACTIONS`,
+  `FusionReaction`), and the reactivity of a fast ion in a Maxwellian target
+  (`FusionReaction.beam_reactivity`, `beam_maxwellian_reactivity`) for beam-target neutron rates.
+- `plasmacoll.units.unit_metadata`: a unit field without a default, as
+  `dataclasses.field(metadata=unit_metadata("m"))`, which type checkers read as required (they
+  read `unit_field("m")` as a default). `array=True` on both keeps an array an array.
+- `to_array` converts mappings value by value and nested lists of quantity strings, the
+  configuration-file form of a 2D array.
+- The Townsend: `plasmacoll.units.Td` and `"80 Td"` in strings (astropy's own `Td` is a
+  tera-day, so the unit is called `townsend` there). `solve_eedf` and `swarm_table` take it.
+- `to_unit` and `to_array` take a bare unit as a scale (`u.keV`), complex values, and `to_unit`
+  CuPy arrays.
+
+### Changed
+
+- The figures of the docs are interactive Plotly figures in the site's colours, drawn with
+  plasma-plots (now in the `docs` extra), one figure per
+  plot and with their formulas typeset as LaTeX.
+- `convert_units` skips fields that are already floats and caches each class's unit fields:
+  building a `NeutralBackground` of plain numbers takes 2.6 times less time.
+
 ## [0.5.0] - 2026-11-03
 
 ### Added

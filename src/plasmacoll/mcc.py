@@ -91,6 +91,8 @@ the scope of this operator.
 
 from __future__ import annotations
 
+import math
+import os
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -105,6 +107,7 @@ from plasmacoll._profiling import PROFILE_TAGS
 from plasmacoll._types import Array
 from plasmacoll.background import NeutralBackground, is_dynamic
 from plasmacoll.constants import ELEMENTARY_CHARGE
+from plasmacoll.cross_sections import CrossSection
 from plasmacoll.markers import MarkerSet
 from plasmacoll.process import CollisionProcess
 from plasmacoll.units import to_unit
@@ -143,6 +146,10 @@ class MCCDiagnostics:
         collision_probability: ``1 - exp(-nu_max dt)``, the probability of a
             (real or null) collision per marker and step; it must be small,
             as a marker collides at most once per step.
+        energy_change: The kinetic energy (J) the collisions added to the
+            markers, with their weights: the change of the collided markers, plus
+            the products, minus the removed markers (for an energy budget, which
+            then need not sum over every marker).
     """
 
     candidates: int = 0
@@ -150,6 +157,7 @@ class MCCDiagnostics:
     counts: dict[str, int] = field(default_factory=dict)
     bound_violations: int = 0
     collision_probability: float = 0.0
+    energy_change: float = 0.0
 
     @property
     def real_collisions(self) -> int:
@@ -200,14 +208,18 @@ def _max_squared_speed(velocities: Array) -> float:
 
     ``velocities`` may be a transposed view of component-major storage
     (``storage[:, :n].T``, as a code that stores markers that way hands it
-    over without copying); the sum then runs over the contiguous rows.
+    over without copying); then a compiled kernel runs over the contiguous
+    component rows.
     """
     if velocities.shape[0] == 0:
         return 0.0
     if isinstance(velocities, np.ndarray):
-        if not velocities.flags.c_contiguous and velocities.T.flags.c_contiguous:
-            rows = velocities.T
-            return float(np.einsum("ij,ij->j", rows, rows).max())
+        rows = velocities.T
+        if all(rows[axis].flags.c_contiguous for axis in range(3)):
+            # component rows, e.g. a slice of component-major storage: compiled
+            from plasmacoll.kernels.max_squared_speed import kernel
+
+            return float(kernel(rows[0], rows[1], rows[2]))
         return float(np.einsum("ij,ij->i", velocities, velocities).max())
     return float(xp.max(xp.sum(velocities**2, axis=1)))
 
@@ -334,6 +346,34 @@ def _unit(vectors: Array, norms: Array) -> Array:
     return units
 
 
+def _geometric_candidates(
+    rng: np.random.Generator, num: int, probability: float
+) -> np.ndarray:
+    """The indices below ``num`` of a Bernoulli(``probability``) draw, sorted.
+
+    The gaps between successes of independent trials are geometric, so their
+    running sums are the successes: O(successes) random numbers, not ``num``.
+    """
+    if num == 0 or probability <= 0.0:
+        return np.empty(0, dtype=np.int64)
+    if probability >= 1.0:
+        return np.arange(num, dtype=np.int64)
+    expected = num * probability
+    size = int(expected + 6.0 * math.sqrt(expected) + 16)
+    positions = np.cumsum(rng.geometric(probability, size)) - 1
+    while positions[-1] < num - 1:
+        more = np.cumsum(rng.geometric(probability, size)) + positions[-1]
+        positions = np.concatenate((positions, more))
+    return positions[: int(np.searchsorted(positions, num))].astype(np.int64)
+
+
+def _kinetic_energy(mass: float, weights: Array, velocities: Array) -> float:
+    """Return ``sum w m v^2 / 2`` (J) of marker-major ``velocities``."""
+    if velocities.shape[0] == 0:
+        return 0.0
+    return float(0.5 * mass * xp.sum(weights * xp.sum(velocities**2, axis=1)))
+
+
 class MonteCarloCollisions:
     """Null-collision Monte Carlo collision operator for several species.
 
@@ -404,14 +444,17 @@ class MonteCarloCollisions:
         species: str,
         processes: Sequence[CollisionProcess],
         density_factor: float | None,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
         """Tabulate the running maximum of the frequency of ``processes`` over speed.
 
         The frequency is evaluated on a dense logarithmic speed grid merged
         with the speeds of every table point and threshold, which resolves the
         local maxima of a piecewise-linear cross section times the speed.
         ``density_factor`` scales the reference densities (None: each
-        background's largest). Returns host arrays ``(speeds, running_max)``.
+        background's largest). Returns host arrays ``(speeds, running_max,
+        frequencies)``; ``frequencies`` is None unless every process has a
+        tabulated `CrossSection`, whose frequency `frequency_bound` may then
+        interpolate instead of evaluating.
         """
         cap = max(
             float(self._speed_of(species, p, p.cross_section.max_energy))
@@ -430,7 +473,12 @@ class MonteCarloCollisions:
         frequencies = xp.to_numpy(
             self._frequency_of(species, processes, xp.asarray(speeds), density_factor)
         )
-        return speeds, np.maximum.accumulate(frequencies)
+        tabulated = all(type(p.cross_section) is CrossSection for p in processes)
+        return (
+            speeds,
+            np.maximum.accumulate(frequencies),
+            np.asarray(frequencies, dtype=float) if tabulated else None,
+        )
 
     @sp.profile("plasmacoll.tabulate_bounds", tags=PROFILE_TAGS)
     def _tabulate_bounds(self) -> None:
@@ -446,6 +494,7 @@ class MonteCarloCollisions:
         tabulated again.
         """
         self._frequency_tables = {}
+        self._kernel_plans: dict[str, _KernelPlan | None] = {}
         for species, processes in self._processes.items():
             groups: dict[str, list[CollisionProcess]] = {}
             for process in processes:
@@ -471,6 +520,7 @@ class MonteCarloCollisions:
         num_bound_samples: int = 4096,
         bound_safety: float = 1.02,
         max_collision_probability: float = 0.1,
+        use_kernel: bool | None = None,
     ) -> None:
         """Check the definitions and tabulate the collision-frequency bounds."""
         self._masses = to_unit(dict(species_masses), "kg", "species_masses")
@@ -509,6 +559,9 @@ class MonteCarloCollisions:
         self._num_bound_samples = int(num_bound_samples)
         self._bound_safety = float(bound_safety)
         self._max_probability = float(max_collision_probability)
+        if use_kernel is None:
+            use_kernel = os.environ.get("PLASMACOLL_MCC_KERNEL", "1") != "0"
+        self._use_kernel = bool(use_kernel)
         self._tabulate_bounds()
         self._warned_bound = False
         self._warned_probability = False
@@ -579,6 +632,7 @@ class MonteCarloCollisions:
             r"$s$ = `bound_safety` (1.02) covers the maxima of a piecewise-linear $\sigma$ times $g$ between grid speeds; 1 is exact for piecewise-constant cross sections",
             r"the running maximum is tabulated per species and background on 4096 (`num_bound_samples`) logarithmic speeds from $10^{-8}$ times the speed of the largest table energy, merged with the speeds of every table point and $g_\mathrm{th}(1 + 10^{-12})$ of every threshold",
             r"beyond the table every $\sigma$ is constant and $\nu \propto g$, which the direct evaluation at $g_{\max,b}$ covers",
+            r"with tabulated cross sections $\nu_b(g_{\max,b})$ is interpolated linearly between the grid speeds (its error between them is the one $s$ covers) and extended as $\nu \propto g$ beyond the grid, exact there; other cross sections are evaluated",
             r"a sum of per-background bounds bounds the sum; a fixed profile is tabulated at its largest density, a `DynamicProfile` at the reference density and scaled by its current `max_factor` $F_b$",
         ),
         components=("plasmacoll.mcc.MonteCarloCollisions.process_frequency",),
@@ -605,7 +659,7 @@ class MonteCarloCollisions:
             return 0.0
         bound = 0.0
         # A sum of bounds bounds the sum.
-        for name, (processes, (speeds, running_max)) in tables.items():
+        for name, (processes, (speeds, running_max, frequencies)) in tables.items():
             limit = float(
                 max_relative_speed[name]
                 if isinstance(max_relative_speed, Mapping)
@@ -617,11 +671,26 @@ class MonteCarloCollisions:
                 continue
             index = int(np.searchsorted(speeds, limit, side="right")) - 1
             tabulated = float(running_max[index]) if index >= 0 else 0.0
-            direct = float(
-                self._frequency_of(
-                    species, processes, xp.asarray([limit]), 1.0 if dynamic else None
-                )[0]
-            )
+            if frequencies is None:
+                direct = float(
+                    self._frequency_of(
+                        species,
+                        processes,
+                        xp.asarray([limit]),
+                        1.0 if dynamic else None,
+                    )[0]
+                )
+            elif index >= len(speeds) - 1:
+                # beyond the last table point every sigma is constant: nu ~ g
+                direct = float(frequencies[-1]) * limit / float(speeds[-1])
+            elif index < 0:
+                direct = float(frequencies[0])
+            else:
+                low, high = float(speeds[index]), float(speeds[index + 1])
+                t = (limit - low) / (high - low)
+                direct = (1.0 - t) * float(frequencies[index]) + t * float(
+                    frequencies[index + 1]
+                )
             bound += factor * max(tabulated, direct)
         return self._bound_safety * bound
 
@@ -879,16 +948,14 @@ class MonteCarloCollisions:
     ) -> Array:
         """Return the sorted indices of the markers that may collide this step.
 
-        Each marker is a candidate independently with ``probability``. That is
-        the same as drawing how many are candidates (binomial) and then which
-        ones (a uniform subset), which costs O(candidates) instead of one
-        random number per marker on NumPy. Other generators (CuPy) draw one
-        number per marker.
+        Each marker is a candidate independently with ``probability``. On
+        NumPy the gaps between consecutive candidates are drawn instead, from
+        the geometric distribution of ``probability``: the same independent
+        draw per marker, at O(candidates) instead of one random number per
+        marker. Other generators (CuPy) draw one number per marker.
         """
         if isinstance(self._rng, np.random.Generator):
-            count = int(self._rng.binomial(num_markers, probability))
-            candidates = self._rng.choice(num_markers, size=count, replace=False)
-            candidates.sort()
+            candidates = _geometric_candidates(self._rng, num_markers, probability)
             if alive is not None:
                 candidates = candidates[np.asarray(alive, dtype=bool)[candidates]]
             return candidates
@@ -1004,6 +1071,119 @@ class MonteCarloCollisions:
                     consumed=consumed,
                 )
 
+    def _products_energy(self, created: Mapping[str, list[NewMarkers]]) -> float:
+        """Return the kinetic energy (J) of the markers the collisions created."""
+        return sum(
+            _kinetic_energy(self._masses[product], batch.weights, batch.velocities)
+            for product, batches in created.items()
+            for batch in batches
+        )
+
+    @sp.profile("plasmacoll.collide_kernel", tags=PROFILE_TAGS)
+    def _collide_kernel(
+        self,
+        species: str,
+        plan: _KernelPlan,
+        positions: Array,
+        velocities: Array,
+        weights: Array,
+        candidates: Array,
+        nu_max: float,
+        created: dict[str, list[NewMarkers]],
+        diagnostics: MCCDiagnostics,
+        consumed: dict[str, list[NewMarkers]],
+    ) -> None:
+        """Collide the ``candidates`` with the compiled kernel (see `kernel_plan`)."""
+        from plasmacoll.kernels.mcc_collide import kernel
+
+        num = int(candidates.shape[0])
+        # one contiguous row per component: views where the caller stores the
+        # markers component-major (as picnic does), otherwise copies
+        rows = velocities.T
+        components = [rows[0], rows[1], rows[2]]
+        copied = [not row.flags.c_contiguous for row in components]
+        components = [
+            np.ascontiguousarray(row) if copy else row
+            for row, copy in zip(components, copied, strict=True)
+        ]
+        normals = self._rng.standard_normal((3 * plan.num_backgrounds, num))
+        uniforms = self._rng.random((6, num))
+        counts = np.zeros(plan.num_processes + 2, dtype=np.int64)
+        parents = np.empty(num, dtype=np.int64)
+        electrons = np.empty((3, num))
+        ions = np.empty((3, num))
+        energy = np.zeros(1)
+        num_products = int(
+            kernel(
+                *components,
+                np.ascontiguousarray(weights, dtype=float),
+                np.ascontiguousarray(candidates, dtype=np.int64),
+                normals,
+                uniforms,
+                float(nu_max),
+                float(self._masses[species]),
+                *plan.arguments,
+                counts,
+                parents,
+                electrons,
+                ions,
+                energy,
+            )
+        )
+        for axis, copy in enumerate(copied):
+            if copy:
+                rows[axis] = components[axis]
+        for index, name in enumerate(plan.names):
+            diagnostics.counts[name] = int(counts[index])
+        diagnostics.null_collisions = int(counts[plan.num_processes])
+        violations = int(counts[plan.num_processes + 1])
+        diagnostics.bound_violations = violations
+        if violations and not self._warned_bound:
+            warnings.warn(
+                f"{violations} {species} marker(s) exceeded the null-collision "
+                "frequency bound; collision rates are underestimated.",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+            self._warned_bound = True
+        diagnostics.energy_change = float(energy[0])
+        if num_products == 0:
+            return
+        ion_species, background = plan.ion_species, plan.ionization_background
+        if ion_species is None or background is None:  # only ionization makes products
+            raise RuntimeError("products without an ionization process")
+        parents = parents[:num_products]
+        product_positions = np.array(positions[parents], copy=True)
+        product_weights = np.array(weights[parents], copy=True)
+        ion_velocities = np.ascontiguousarray(ions[:, :num_products].T)
+        batches = {
+            species: np.ascontiguousarray(electrons[:, :num_products].T),
+            ion_species: ion_velocities,
+        }
+        for product, product_velocities in batches.items():
+            created.setdefault(product, []).append(
+                NewMarkers(
+                    product_positions
+                    if product == species
+                    else np.array(product_positions, copy=True),
+                    product_velocities,
+                    product_weights
+                    if product == species
+                    else np.array(product_weights, copy=True),
+                )
+            )
+            diagnostics.energy_change += _kinetic_energy(
+                self._masses[product], product_weights, product_velocities
+            )
+        # each ionization consumed one neutral of its background
+        consumed.setdefault(background, []).append(
+            NewMarkers(
+                np.array(product_positions, copy=True),
+                np.array(ion_velocities, copy=True),
+                np.array(product_weights, copy=True),
+            )
+        )
+
     @method(
         equations={
             "max_speed": r"g_{\max,b} = v_{\max} + |\mathbf u_b| + 8\sqrt{\frac{e\,T_b F_{T,b}}{M_b}}, \qquad v_{\max} = \max_i |\mathbf v_i|",
@@ -1013,7 +1193,7 @@ class MonteCarloCollisions:
         },
         assumptions=(
             r"at most one collision per marker and step, so $\nu_{\max}\Delta t \ll 1$; warns once when $P$ exceeds `max_collision_probability` (0.1)",
-            r"with a NumPy generator the candidates are a binomial$(N, P)$ count and a uniform subset; other generators draw one number per marker",
+            r"with a NumPy generator the gaps between candidates are geometric$(P)$, the same independent draw per marker at O(candidates); other generators draw one number per marker",
             r"each candidate draws one neutral velocity $\mathbf w$ per background and $R$ uniform in $[0, 1)$; the real frequencies use the density factor where the marker is (exact thinning)",
             r"candidates whose total frequency exceeds $\nu_{\max}(1 + 10^{-9})$ are counted in `bound_violations` and warned about once: their rate is too low",
             r"$F_{T,b}$ the largest temperature factor; eight thermal speeds leave about $10^{-15}$ per component for a faster neutral",
@@ -1110,6 +1290,29 @@ class MonteCarloCollisions:
             return MCCResult(velocities, removed, created, diagnostics)
         candidates = xp.asarray(candidates)
 
+        plan = (
+            self.kernel_plan(species)
+            if self._use_kernel and isinstance(velocities, np.ndarray)
+            else None
+        )
+        if plan is not None and isinstance(self._rng, np.random.Generator):
+            self._collide_kernel(
+                species,
+                plan,
+                positions,
+                velocities,
+                weights,
+                candidates,
+                nu_max,
+                created,
+                diagnostics,
+                consumed,
+            )
+            return MCCResult(velocities, removed, created, diagnostics, consumed)
+
+        mass = self._masses[species]
+        candidate_weights = weights[candidates]
+        before = _kinetic_energy(mass, candidate_weights, velocities[candidates])
         self._collide_candidates(
             species,
             positions,
@@ -1122,7 +1325,28 @@ class MonteCarloCollisions:
             diagnostics,
             consumed,
         )
+        kept = xp.where(removed[candidates], 0.0, candidate_weights)
+        diagnostics.energy_change = (
+            _kinetic_energy(mass, kept, velocities[candidates])
+            - before
+            + self._products_energy(created)
+        )
         return MCCResult(velocities, removed, created, diagnostics, consumed)
+
+    def kernel_plan(self, species: str) -> _KernelPlan | None:
+        """Return the arrays of the compiled collision step of ``species``, or None.
+
+        The compiled kernel (``plasmacoll.kernels.mcc_collide``) covers the
+        common case: every background of the species without density or
+        temperature profile, tabulated cross sections (`CrossSection`), and
+        processes of the kinds ``elastic`` and ``excitation`` (no products),
+        ``backscatter`` (no products) and ``ionization`` by the species itself
+        (an ``electron`` of the species and one ``ion`` species for all). Other
+        species collide through the array operations of `collide`.
+        """
+        if species not in self._kernel_plans:
+            self._kernel_plans[species] = _KernelPlan.build(self, species)
+        return self._kernel_plans[species]
 
     @sp.profile("plasmacoll.collide_species", tags=PROFILE_TAGS)
     def collide_species(
@@ -1131,6 +1355,7 @@ class MonteCarloCollisions:
         dt: float | Mapping[str, float],
         incident: Iterable[str] | None = None,
         consumed: dict[str, list[NewMarkers]] | None = None,
+        untracked: dict[str, list[NewMarkers]] | None = None,
     ) -> dict[str, MCCDiagnostics]:
         """Collide every species in ``species`` for one time step ``dt`` (s), in place.
 
@@ -1150,12 +1375,18 @@ class MonteCarloCollisions:
             consumed: If given, the neutrals the collisions consumed are
                 appended to it per background name (see
                 `MCCResult.consumed`), for a gas model that depletes.
+            untracked: If given, the products of species missing from
+                ``species`` are appended to it per product species instead of
+                raising: where and with which velocity they were born (e.g.
+                the ions of test electrons, for an ionization map), without
+                simulating them.
 
         Returns:
             The collision counters of every species that collided.
 
         Raises:
-            KeyError: If a product species is missing from ``species``.
+            KeyError: If a product species is missing from ``species`` and
+                ``untracked`` is None.
         """
         diagnostics: dict[str, MCCDiagnostics] = {}
         pending: dict[str, list[NewMarkers]] = {}
@@ -1184,7 +1415,13 @@ class MonteCarloCollisions:
 
         for product, batches in pending.items():
             if product not in species:
-                raise KeyError(f"Product species {product!r} is not simulated")
+                if untracked is None:
+                    raise KeyError(
+                        f"Product species {product!r} is not simulated; pass "
+                        "untracked={} to collect its products instead"
+                    )
+                untracked.setdefault(product, []).extend(batches)
+                continue
             species[product].add(
                 positions=xp.concatenate([batch.positions for batch in batches]),
                 velocities=xp.concatenate([batch.velocities for batch in batches]),
@@ -1313,3 +1550,119 @@ class MonteCarloCollisions:
     def rng(self) -> Any:
         """Return the random generator of the operator."""
         return self._rng
+
+
+_KERNEL_KINDS = {"elastic": 0, "excitation": 0, "backscatter": 1, "ionization": 2}
+
+
+@dataclass
+class _KernelPlan:
+    """The per-process arrays of `MonteCarloCollisions` for the ``mcc_collide`` kernel."""
+
+    names: tuple[str, ...]
+    arguments: tuple[Any, ...]
+    num_backgrounds: int
+    ion_species: str | None
+    ionization_background: str | None
+
+    @property
+    def num_processes(self) -> int:
+        """The number of processes."""
+        return len(self.names)
+
+    @classmethod
+    def build(
+        cls, collisions: MonteCarloCollisions, species: str
+    ) -> _KernelPlan | None:
+        """The plan of ``species``, or None where the kernel does not apply."""
+        processes = collisions._processes.get(species, ())
+        if not processes:
+            return None
+        backgrounds = list(dict.fromkeys(p.background for p in processes))
+        ion_species = set()
+        ionizing = set()
+        for process in processes:
+            background = collisions._backgrounds[process.background]
+            if (
+                background.profile is not None
+                or background.temperature_profile is not None
+            ):
+                return None
+            if type(process.cross_section) is not CrossSection:
+                return None
+            if process.kind not in _KERNEL_KINDS:
+                return None
+            if process.scattering not in (
+                "isotropic",
+                "vahedi_surendra",
+                "okhrimovskyy",
+            ):
+                return None
+            if process.kind == "ionization":
+                if set(process.products) != {"electron", "ion"}:
+                    return None
+                if process.products["electron"] != species:
+                    return None
+                if process.energy_sharing not in ("equal", "uniform", "opal"):
+                    return None
+                if process.energy_sharing == "opal" and not process.sharing_energy:
+                    return None
+                ion_species.add(process.products["ion"])
+                ionizing.add(process.background)
+            elif process.products:
+                return None
+        if len(ion_species) > 1 or len(ionizing) > 1:
+            return None
+        sharing_code = {"equal": 0, "uniform": 1, "opal": 2}
+        scattering_code = {"isotropic": 0, "vahedi_surendra": 1, "okhrimovskyy": 2}
+        energies, sigmas, starts, lengths = [], [], [], []
+        start = 0
+        for process in processes:
+            energy = np.asarray(xp.to_numpy(process.cross_section.energy), dtype=float)
+            sigma = np.asarray(xp.to_numpy(process.cross_section.sigma), dtype=float)
+            energies.append(energy)
+            sigmas.append(sigma)
+            starts.append(start)
+            lengths.append(len(energy))
+            start += len(energy)
+        bgs = [collisions._backgrounds[name] for name in backgrounds]
+        arguments = (
+            np.array([bg.mass for bg in bgs], dtype=float),
+            np.array([bg.thermal_speed for bg in bgs], dtype=float),
+            np.array(
+                [np.broadcast_to(np.asarray(bg.drift, dtype=float), 3) for bg in bgs],
+                dtype=float,
+            ).reshape(len(bgs), 3),
+            np.array([_KERNEL_KINDS[p.kind] for p in processes], dtype=np.int64),
+            np.array(
+                [scattering_code[p.scattering] for p in processes], dtype=np.int64
+            ),
+            np.array(
+                [backgrounds.index(p.background) for p in processes], dtype=np.int64
+            ),
+            np.array(
+                [collisions._backgrounds[p.background].density for p in processes],
+                dtype=float,
+            ),
+            np.array([collisions._energy_mass(species, p) for p in processes]),
+            np.array([p.loss * ELEMENTARY_CHARGE for p in processes], dtype=float),
+            np.array([p.cross_section.threshold for p in processes], dtype=float),
+            np.array(
+                [sharing_code.get(p.energy_sharing, 0) for p in processes],
+                dtype=np.int64,
+            ),
+            np.array(
+                [float(p.sharing_energy or 0.0) * ELEMENTARY_CHARGE for p in processes]
+            ),
+            np.array(starts, dtype=np.int64),
+            np.array(lengths, dtype=np.int64),
+            np.concatenate(energies),
+            np.concatenate(sigmas),
+        )
+        return cls(
+            names=tuple(p.name for p in processes),
+            arguments=arguments,
+            num_backgrounds=len(bgs),
+            ion_species=next(iter(ion_species), None),
+            ionization_background=next(iter(ionizing), None),
+        )

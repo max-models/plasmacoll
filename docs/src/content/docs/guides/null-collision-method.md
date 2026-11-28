@@ -21,9 +21,9 @@ where $n_b$ is the neutral density and $E$ the energy the cross section is tabul
    speeds of the neutrals and looks up a bound $\nu_{\max} \ge \sum_k \nu_k(g)$ for all
    $g \le g_{\max}$.
 2. **Candidates.** Every marker becomes a candidate with probability
-   $P = 1 - e^{-\nu_{\max}\Delta t}$. On NumPy the number of candidates is drawn from a binomial
-   distribution and then the candidates themselves, so the cost scales with the candidates, not
-   with all markers. Other generators (CuPy's) draw one number per marker.
+   $P = 1 - e^{-\nu_{\max}\Delta t}$. On NumPy the gaps between candidates are drawn from the geometric
+   distribution of $P$ (the same independent draw per marker), so the cost scales with the
+   candidates, not with all markers. Other generators (CuPy's) draw one number per marker.
 3. **Selection.** Each candidate draws a neutral velocity and a uniform number
    $R\,\nu_{\max}$ with $R \in [0, 1)$. It undergoes process $k$ if
    $\sum_{j<k}\nu_j < R\,\nu_{\max} \le \sum_{j\le k}\nu_j$, and a *null* collision (nothing
@@ -34,6 +34,16 @@ where $n_b$ is the neutral density and $E$ the energy the cross section is tabul
 Real collisions of process $k$ thus happen with probability $P\,\nu_k/\nu_{\max}$ per step. That
 is $\nu_k\Delta t$ to first order, independent of the bound.
 
+Steps 3 and 4 run in one compiled kernel (`plasmacoll.kernels.mcc_collide`) for the common case:
+backgrounds without density or temperature profile, tabulated cross sections (`CrossSection`),
+and processes of the kinds `elastic`, `excitation`, `backscatter` and ionization by the
+species itself, with any scattering model and energy sharing. `MonteCarloCollisions.kernel_plan`
+says whether a species takes it; the others run the array operations, as does everything on
+CuPy. Both draw the same distributions; `use_kernel=False` (or `PLASMACOLL_MCC_KERNEL=0`)
+selects the array operations. `MCCDiagnostics.energy_change` reports the kinetic energy the
+collisions added (the collided markers, the products, minus the removed markers), so an energy
+budget need not sum over every marker.
+
 ## The frequency bound
 
 At construction the operator tabulates $\nu(g) = \sum_k\nu_k(g)$ on a logarithmic grid of
@@ -41,7 +51,9 @@ At construction the operator tabulates $\nu(g) = \sum_k\nu_k(g)$ on a logarithmi
 its running maximum. Because the cross sections are piecewise linear in energy, the frequency's
 local maxima lie at or near those points. `bound_safety` (default 1.02) covers maxima between
 grid points. Beyond the last table point the cross sections are constant and $\nu$ grows
-linearly with $g$, which the direct evaluation at $g_{\max}$ covers.
+linearly with $g$, which the direct evaluation at $g_{\max}$ covers. With tabulated cross
+sections that evaluation is the tabulated frequency interpolated between the grid speeds
+(and extended as $\nu \propto g$ beyond the grid), which costs no cross-section lookup.
 
 The bound must hold. If a candidate's real total frequency exceeds $\nu_{\max}$, the collision rate
 is underestimated. The operator counts such candidates in `MCCDiagnostics.bound_violations` and

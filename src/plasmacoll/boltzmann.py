@@ -70,8 +70,8 @@ from plasmacoll.process import CollisionProcess
 from plasmacoll.rates import RateTable
 from plasmacoll.units import to_array, to_unit
 
-#: The Townsend (1e-21 V m^2) as an astropy unit string; astropy has no ``Td``.
-_TD = "1e-21 V m2"
+#: The Townsend (1e-21 V m^2), which plasmacoll.units enables in astropy.
+_TD = "townsend"
 
 __all__ = [
     "GROWTH_MODELS",
@@ -953,9 +953,8 @@ def solve_eedf(
     """Return the steady electron energy distribution in a uniform DC field.
 
     ``reduced_field``, ``gas_temperature`` and ``max_energy`` take astropy
-    Quantities (``1e-20 * u.V * u.m**2``, ``300 * u.K``), strings or plain
-    numbers in the units below; astropy has no Townsend, so a reduced field
-    in Td is a plain number.
+    Quantities (``10 * plasmacoll.units.Td``, ``300 * u.K``), strings
+    (``"10 Td"``) or plain numbers in the units below.
 
     Args:
         processes: The electron-impact processes: ``elastic`` (with the
